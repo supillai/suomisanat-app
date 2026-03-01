@@ -5,7 +5,7 @@
 :root {
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   color: #10243a;
-  background: radial-gradient(circle at 20% 15%, #eefaff 0%, #dceff7 35%, #f8fbff 100%);
+  background: radial-gradient(circle at 18% 12%, #e7f5ff 0%, #d8e8f2 35%, #f1f6fb 100%);
 }
 
 body {
@@ -18,16 +18,16 @@ body {
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8px);
 }
 
 .card-shadow {
-  box-shadow: 0 14px 45px rgba(16, 36, 58, 0.12);
+  box-shadow: 0 12px 32px rgba(16, 36, 58, 0.12);
 }
 
 .accent-gradient {
-  background-image: linear-gradient(120deg, #0c8f8f 0%, #18a0a0 55%, #49b6a4 100%);
+  background-image: linear-gradient(120deg, #0b7e7e 0%, #159393 55%, #35a893 100%);
 }
 
 .sun-gradient {

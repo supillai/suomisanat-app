@@ -5,6 +5,7 @@ import type { ProgressMap, VocabularyWord, WordPos, WordTopic } from "./types";
 type Tab = "study" | "quiz" | "list" | "progress";
 type StudyFilter = "all" | "unknown" | "known";
 type QuizMode = "mcq" | "typing";
+type StudyDecision = "none" | "known" | "practice";
 
 const PROGRESS_KEY = "suomisanat-progress-v1";
 const DAILY_GOAL_KEY = "suomisanat-daily-goal-v1";
@@ -55,6 +56,28 @@ const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
   return [...distractors, correctWord.en].sort(() => Math.random() - 0.5);
 };
 
+const studyExample = (word: VocabularyWord): string => {
+  if (word.pos === "verb") {
+    if (word.fi === "olla") {
+      return "Esimerkki: Minä haluan olla ajoissa.";
+    }
+    return `Esimerkki: Minä yritän ${word.fi} tänään.`;
+  }
+  if (word.pos === "noun") {
+    return `Esimerkki: Tämä on ${word.fi}.`;
+  }
+  if (word.pos === "adjective") {
+    return `Esimerkki: Tämä tehtävä on ${word.fi}.`;
+  }
+  if (word.pos === "adverb") {
+    return `Esimerkki: Hän puhuu ${word.fi}.`;
+  }
+  if (word.pos === "pronoun") {
+    return `Esimerkki: Sana "${word.fi}" auttaa keskustelussa.`;
+  }
+  return `Esimerkki: Käytän sanaa "${word.fi}" arjessa.`;
+};
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("study");
   const [progressMap, setProgressMap] = useState<ProgressMap>(() => safeReadProgress());
@@ -62,6 +85,9 @@ export default function App() {
   const [studyFilter, setStudyFilter] = useState<StudyFilter>("all");
   const [studyWord, setStudyWord] = useState<VocabularyWord>(() => words[0]);
   const [reveal, setReveal] = useState(false);
+  const [studyDecision, setStudyDecision] = useState<StudyDecision>("none");
+  const [studyKnownSession, setStudyKnownSession] = useState(0);
+  const [studyPracticeSession, setStudyPracticeSession] = useState(0);
   const [quizMode, setQuizMode] = useState<QuizMode>("mcq");
   const [quizWord, setQuizWord] = useState<VocabularyWord>(() => words[1]);
   const [quizOptions, setQuizOptions] = useState<string[]>(() => pickQuizOptions(words[1]));
@@ -112,6 +138,15 @@ export default function App() {
     });
   }, [progressMap, studyFilter]);
 
+  useEffect(() => {
+    if (!studyPool.some((word) => word.id === studyWord.id)) {
+      const fallback = studyPool.length > 0 ? studyPool[0] : words[0];
+      setStudyWord(fallback);
+      setReveal(false);
+      setStudyDecision("none");
+    }
+  }, [studyPool, studyWord.id]);
+
   const filteredWords = useMemo(() => {
     return words.filter((word) => {
       if (topicFilter !== "all" && word.topic !== topicFilter) return false;
@@ -137,6 +172,26 @@ export default function App() {
     const pool = studyPool.length > 0 ? studyPool : words;
     setStudyWord(randomFrom(pool));
     setReveal(false);
+    setStudyDecision("none");
+  };
+
+  const revealStudyWord = (): void => {
+    setReveal(true);
+    setStudyDecision("none");
+  };
+
+  const markStudyKnown = (): void => {
+    if (!reveal || studyDecision !== "none") return;
+    markWord(studyWord, true, true);
+    setStudyDecision("known");
+    setStudyKnownSession((prev) => prev + 1);
+  };
+
+  const markStudyPractice = (): void => {
+    if (!reveal || studyDecision !== "none") return;
+    markWord(studyWord, false, false);
+    setStudyDecision("practice");
+    setStudyPracticeSession((prev) => prev + 1);
   };
 
   const nextQuiz = (): void => {
@@ -189,16 +244,44 @@ export default function App() {
           </div>
 
           <nav className="mt-6 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
-            <button className={`rounded-xl px-3 py-2 text-sm font-semibold ${tab === "study" ? "accent-gradient text-white" : "bg-white text-ink"}`} onClick={() => setTab("study")}>
+            <button
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                tab === "study"
+                  ? "accent-gradient border-transparent text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+              }`}
+              onClick={() => setTab("study")}
+            >
               Study
             </button>
-            <button className={`rounded-xl px-3 py-2 text-sm font-semibold ${tab === "quiz" ? "accent-gradient text-white" : "bg-white text-ink"}`} onClick={() => setTab("quiz")}>
+            <button
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                tab === "quiz"
+                  ? "accent-gradient border-transparent text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+              }`}
+              onClick={() => setTab("quiz")}
+            >
               Quiz
             </button>
-            <button className={`rounded-xl px-3 py-2 text-sm font-semibold ${tab === "list" ? "accent-gradient text-white" : "bg-white text-ink"}`} onClick={() => setTab("list")}>
+            <button
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                tab === "list"
+                  ? "accent-gradient border-transparent text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+              }`}
+              onClick={() => setTab("list")}
+            >
               Word List
             </button>
-            <button className={`rounded-xl px-3 py-2 text-sm font-semibold ${tab === "progress" ? "accent-gradient text-white" : "bg-white text-ink"}`} onClick={() => setTab("progress")}>
+            <button
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                tab === "progress"
+                  ? "accent-gradient border-transparent text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+              }`}
+              onClick={() => setTab("progress")}
+            >
               Progress
             </button>
           </nav>
@@ -211,53 +294,130 @@ export default function App() {
               {(["all", "unknown", "known"] as StudyFilter[]).map((mode) => (
                 <button
                   key={mode}
-                  className={`rounded-lg px-3 py-1 text-sm ${studyFilter === mode ? "accent-gradient text-white" : "bg-slate-200 text-ink"}`}
+                  className={`rounded-lg border px-3 py-1 text-sm ${
+                    studyFilter === mode
+                      ? "accent-gradient border-transparent text-white"
+                      : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                  }`}
                   onClick={() => setStudyFilter(mode)}
                 >
                   {mode}
                 </button>
               ))}
-              <span className="ml-auto text-xs text-slate-600">Pool: {studyPool.length}</span>
+              <span className="ml-auto text-xs text-slate-700">Pool: {studyPool.length}</span>
             </div>
 
-            <div className="rounded-3xl bg-white p-6 text-center">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{studyWord.topic}</p>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <article className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Reviewed Today</p>
+                <p className="mt-1 text-2xl font-bold text-ink">{reviewedToday}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Accuracy</p>
+                <p className="mt-1 text-2xl font-bold text-ink">{accuracy}%</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Session Known</p>
+                <p className="mt-1 text-2xl font-bold text-ink">{studyKnownSession}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Session Practice</p>
+                <p className="mt-1 text-2xl font-bold text-ink">{studyPracticeSession}</p>
+              </article>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-semibold text-ink">Daily goal progress</p>
+                <span className="text-xs text-slate-700">
+                  {reviewedToday}/{dailyGoal}
+                </span>
+              </div>
+              <div className="h-3 rounded-full bg-slate-200">
+                <div className="h-3 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
+                  Daily goal
+                </label>
+                <input
+                  id="daily-goal-study"
+                  type="number"
+                  min={5}
+                  max={200}
+                  className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                  value={dailyGoal}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value);
+                    if (Number.isFinite(parsed) && parsed > 0) {
+                      setDailyGoal(Math.round(parsed));
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
+              <div className="mb-3 flex flex-wrap justify-center gap-2">
+                <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {studyWord.topic}
+                </span>
+                <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {studyWord.pos}
+                </span>
+              </div>
               <h2 className="mt-3 text-4xl font-extrabold text-ink md:text-5xl">{studyWord.fi}</h2>
-              {!reveal && <p className="mt-4 text-sm text-slate-600">Try to recall the meaning, then reveal.</p>}
+              {!reveal && <p className="mt-4 text-sm text-slate-700">Try to recall the meaning, then reveal.</p>}
               {reveal && (
                 <div className="mt-4 space-y-2">
                   <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
-                  <p className="text-sm text-slate-700">{studyWord.fiSimple}</p>
+                  <p className="text-sm text-slate-800">{studyWord.fiSimple}</p>
+                  <p className="text-sm text-slate-700">{studyExample(studyWord)}</p>
                 </div>
               )}
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white" onClick={() => setReveal(true)}>
-                Reveal
-              </button>
-              <button className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink" onClick={nextStudyWord}>
-                Next Card
-              </button>
-              <button
-                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
-                onClick={() => {
-                  markWord(studyWord, true, true);
-                  nextStudyWord();
-                }}
-              >
-                Mark Known
-              </button>
-              <button
-                className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white"
-                onClick={() => {
-                  markWord(studyWord, false, false);
-                  nextStudyWord();
-                }}
-              >
-                Needs Practice
-              </button>
-            </div>
+            {!reveal && (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <button className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white" onClick={revealStudyWord}>
+                  Reveal Meaning
+                </button>
+                <button
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                  onClick={nextStudyWord}
+                >
+                  Skip Card
+                </button>
+              </div>
+            )}
+
+            {reveal && studyDecision === "none" && (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <button className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyKnown}>
+                  Mark Known
+                </button>
+                <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyPractice}>
+                  Needs Practice
+                </button>
+                <button
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 sm:col-span-2"
+                  onClick={nextStudyWord}
+                >
+                  Skip Without Marking
+                </button>
+              </div>
+            )}
+
+            {reveal && studyDecision !== "none" && (
+              <div className="mt-5">
+                <p className="mb-3 text-sm font-semibold text-slate-800">
+                  {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
+                </p>
+                <button className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto" onClick={nextStudyWord}>
+                  Next Card
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -265,27 +425,41 @@ export default function App() {
           <section className="glass card-shadow rounded-3xl p-5 md:p-8">
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">Quiz mode:</span>
-              <button className={`rounded-lg px-3 py-1 text-sm ${quizMode === "mcq" ? "accent-gradient text-white" : "bg-slate-200 text-ink"}`} onClick={() => setQuizMode("mcq")}>
+              <button
+                className={`rounded-lg border px-3 py-1 text-sm ${
+                  quizMode === "mcq"
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                }`}
+                onClick={() => setQuizMode("mcq")}
+              >
                 Multiple Choice
               </button>
-              <button className={`rounded-lg px-3 py-1 text-sm ${quizMode === "typing" ? "accent-gradient text-white" : "bg-slate-200 text-ink"}`} onClick={() => setQuizMode("typing")}>
+              <button
+                className={`rounded-lg border px-3 py-1 text-sm ${
+                  quizMode === "typing"
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                }`}
+                onClick={() => setQuizMode("typing")}
+              >
                 Type Finnish
               </button>
-              <span className="ml-auto text-xs text-slate-600">
+              <span className="ml-auto text-xs text-slate-700">
                 Score: {quizCorrect} correct / {quizWrong} wrong
               </span>
             </div>
 
-            <div className="rounded-3xl bg-white p-6">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6">
               {quizMode === "mcq" && (
                 <>
-                  <p className="text-sm text-slate-500">Pick the English meaning:</p>
+                  <p className="text-sm text-slate-600">Pick the English meaning:</p>
                   <h2 className="mt-2 text-3xl font-bold text-ink">{quizWord.fi}</h2>
                   <div className="mt-5 grid gap-2 sm:grid-cols-2">
                     {quizOptions.map((option) => (
                       <button
                         key={`${quizWord.id}-${option}`}
-                        className="rounded-xl border border-slate-200 px-3 py-3 text-left text-sm font-semibold text-ink hover:bg-slate-50"
+                        className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
                         onClick={() => answerMcq(option)}
                       >
                         {option}
@@ -297,10 +471,10 @@ export default function App() {
 
               {quizMode === "typing" && (
                 <>
-                  <p className="text-sm text-slate-500">Type the Finnish word:</p>
+                  <p className="text-sm text-slate-600">Type the Finnish word:</p>
                   <h2 className="mt-2 text-2xl font-bold text-ink">{quizWord.en}</h2>
                   <input
-                    className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base focus:border-accent focus:outline-none"
+                    className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-none"
                     placeholder="Write Finnish word"
                     value={typingValue}
                     onChange={(event) => setTypingValue(event.target.value)}
@@ -316,10 +490,13 @@ export default function App() {
                 </>
               )}
 
-              {quizFeedback && <p className="mt-4 text-sm font-semibold text-slate-700">{quizFeedback}</p>}
+              {quizFeedback && <p className="mt-4 text-sm font-semibold text-slate-800">{quizFeedback}</p>}
             </div>
 
-            <button className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink" onClick={nextQuiz}>
+            <button
+              className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              onClick={nextQuiz}
+            >
               Next Question
             </button>
           </section>
@@ -329,13 +506,13 @@ export default function App() {
           <section className="glass card-shadow rounded-3xl p-5 md:p-8">
             <div className="grid gap-3 md:grid-cols-4">
               <input
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-accent focus:outline-none md:col-span-2"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none md:col-span-2"
                 placeholder="Search Finnish, English, or explanation"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
               />
               <select
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
                 value={topicFilter}
                 onChange={(event) => setTopicFilter(event.target.value as WordTopic | "all")}
               >
@@ -347,7 +524,7 @@ export default function App() {
                 ))}
               </select>
               <select
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
                 value={posFilter}
                 onChange={(event) => setPosFilter(event.target.value as WordPos | "all")}
               >
@@ -360,11 +537,11 @@ export default function App() {
               </select>
             </div>
 
-            <p className="mt-3 text-xs text-slate-600">Showing {filteredWords.length} of 500 words</p>
+            <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of 500 words</p>
 
-            <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-slate-200 bg-white">
+            <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white">
               <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
                   <tr>
                     <th className="px-3 py-2">Finnish</th>
                     <th className="px-3 py-2">English</th>
@@ -375,12 +552,12 @@ export default function App() {
                 </thead>
                 <tbody>
                   {filteredWords.map((word) => (
-                    <tr key={word.id} className="border-t border-slate-100">
+                    <tr key={word.id} className="border-t border-slate-200">
                       <td className="px-3 py-2 font-semibold text-ink">{word.fi}</td>
-                      <td className="px-3 py-2">{word.en}</td>
+                      <td className="px-3 py-2 text-slate-800">{word.en}</td>
                       <td className="px-3 py-2 text-slate-700">{word.fiSimple}</td>
-                      <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500">{word.topic}</td>
-                      <td className="px-3 py-2">{progressMap[word.id]?.known ? "yes" : "no"}</td>
+                      <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-600">{word.topic}</td>
+                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.known ? "yes" : "no"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -392,24 +569,24 @@ export default function App() {
         {tab === "progress" && (
           <section className="glass card-shadow rounded-3xl p-5 md:p-8">
             <div className="grid gap-4 md:grid-cols-3">
-              <article className="rounded-2xl bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Known Words</p>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Known Words</p>
                 <p className="mt-2 text-3xl font-bold text-ink">{knownCount}</p>
               </article>
-              <article className="rounded-2xl bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Accuracy</p>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Accuracy</p>
                 <p className="mt-2 text-3xl font-bold text-ink">{accuracy}%</p>
               </article>
-              <article className="rounded-2xl bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Reviewed Today</p>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Reviewed Today</p>
                 <p className="mt-2 text-3xl font-bold text-ink">{reviewedToday}</p>
               </article>
             </div>
 
-            <div className="mt-5 rounded-2xl bg-white p-4">
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-semibold text-ink">Daily goal progress</p>
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-slate-700">
                   {reviewedToday}/{dailyGoal}
                 </span>
               </div>
@@ -425,7 +602,7 @@ export default function App() {
                   type="number"
                   min={5}
                   max={200}
-                  className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                  className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
                   value={dailyGoal}
                   onChange={(event) => {
                     const parsed = Number(event.target.value);
@@ -442,6 +619,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
