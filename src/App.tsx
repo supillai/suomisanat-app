@@ -235,7 +235,7 @@ export default function App() {
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight text-ink md:text-4xl">SuomiSanat</h1>
               <p className="mt-2 max-w-xl text-sm text-slate-700 md:text-base">
-                500 Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
+                337 Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
               </p>
             </div>
             <div className="sun-gradient inline-flex rounded-2xl px-4 py-3 text-sm font-semibold text-ink">
@@ -619,6 +619,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
