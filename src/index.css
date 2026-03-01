@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: #10243a;
+  background: radial-gradient(circle at 20% 15%, #eefaff 0%, #dceff7 35%, #f8fbff 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.card-shadow {
+  box-shadow: 0 14px 45px rgba(16, 36, 58, 0.12);
+}
+
+.accent-gradient {
+  background-image: linear-gradient(120deg, #0c8f8f 0%, #18a0a0 55%, #49b6a4 100%);
+}
+
+.sun-gradient {
+  background-image: linear-gradient(120deg, #fdb944 0%, #ffd978 100%);
+}
