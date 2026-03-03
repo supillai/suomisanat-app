@@ -25,6 +25,7 @@ export type ProgressState = {
   correct: number;
   wrong: number;
   known: boolean;
+  needsPractice: boolean;
   lastReviewed: string | null;
 };
 

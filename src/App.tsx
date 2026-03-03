@@ -1,15 +1,51 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { words } from "./data/words";
-import type { ProgressMap, VocabularyWord, WordPos, WordTopic } from "./types";
+import { hasSupabaseConfig, supabase } from "./lib/supabase";
+import type { ProgressMap, ProgressState, VocabularyWord, WordPos, WordTopic } from "./types";
 
 type Tab = "study" | "quiz" | "list" | "progress";
-type StudyFilter = "all" | "unknown" | "known";
+type StudyFilter = "all" | "unknown" | "known" | "practice";
 type QuizMode = "mcq" | "typing";
 type StudyDecision = "none" | "known" | "practice";
+type SyncStatus = "idle" | "loading" | "saving" | "synced" | "error";
+
+type UserProgressRow = {
+  word_id: number;
+  seen: number | null;
+  correct: number | null;
+  wrong: number | null;
+  known: boolean | null;
+  needs_practice: boolean | null;
+  last_reviewed: string | null;
+};
+
+type UserProgressUpsert = {
+  user_id: string;
+  word_id: number;
+  seen: number;
+  correct: number;
+  wrong: number;
+  known: boolean;
+  needs_practice: boolean;
+  last_reviewed: string | null;
+  updated_at: string;
+};
+
+type UserSettingsRow = {
+  daily_goal: number | null;
+};
+
+type UserSettingsUpsert = {
+  user_id: string;
+  daily_goal: number;
+  updated_at: string;
+};
 
 const PROGRESS_KEY = "suomisanat-progress-v1";
 const DAILY_GOAL_KEY = "suomisanat-daily-goal-v1";
 const DEFAULT_DAILY_GOAL = 20;
+const SYNC_DEBOUNCE_MS = 900;
 
 const TOPICS: WordTopic[] = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"];
 const POS_OPTIONS: WordPos[] = ["noun", "verb", "adjective", "adverb", "pronoun", "other"];
@@ -31,7 +67,34 @@ const safeReadProgress = (): ProgressMap => {
   try {
     const raw = localStorage.getItem(PROGRESS_KEY);
     if (!raw) return {};
-    return (JSON.parse(raw) as ProgressMap) ?? {};
+    const parsed = JSON.parse(raw) as Record<string, Partial<ProgressState>> | null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    const normalized: ProgressMap = {};
+
+    for (const [rawId, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== "object") continue;
+
+      const id = Number(rawId);
+      if (!Number.isFinite(id)) continue;
+
+      const seen = Number(value.seen);
+      const correct = Number(value.correct);
+      const wrong = Number(value.wrong);
+      const known = Boolean(value.known);
+      const needsPractice = known ? false : Boolean(value.needsPractice);
+
+      normalized[id] = {
+        seen: Number.isFinite(seen) && seen >= 0 ? Math.round(seen) : 0,
+        correct: Number.isFinite(correct) && correct >= 0 ? Math.round(correct) : 0,
+        wrong: Number.isFinite(wrong) && wrong >= 0 ? Math.round(wrong) : 0,
+        known,
+        needsPractice,
+        lastReviewed: typeof value.lastReviewed === "string" ? value.lastReviewed : null
+      };
+    }
+
+    return normalized;
   } catch {
     return {};
   }
@@ -46,6 +109,63 @@ const safeReadDailyGoal = (): number => {
   }
 };
 
+const safeInt = (value: number | null | undefined): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : 0;
+};
+
+const toProgressMapFromRows = (rows: UserProgressRow[] | null | undefined): ProgressMap => {
+  const map: ProgressMap = {};
+
+  for (const row of rows ?? []) {
+    if (!Number.isFinite(row.word_id)) continue;
+
+    const known = Boolean(row.known);
+    const needsPractice = known ? false : Boolean(row.needs_practice);
+
+    map[row.word_id] = {
+      seen: safeInt(row.seen),
+      correct: safeInt(row.correct),
+      wrong: safeInt(row.wrong),
+      known,
+      needsPractice,
+      lastReviewed: typeof row.last_reviewed === "string" ? row.last_reviewed : null
+    };
+  }
+
+  return map;
+};
+
+const toProgressUpserts = (userId: string, map: ProgressMap): UserProgressUpsert[] => {
+  const updatedAt = new Date().toISOString();
+  const rows: UserProgressUpsert[] = [];
+
+  for (const [rawWordId, state] of Object.entries(map)) {
+    const wordId = Number(rawWordId);
+    if (!Number.isFinite(wordId)) continue;
+
+    rows.push({
+      user_id: userId,
+      word_id: wordId,
+      seen: safeInt(state.seen),
+      correct: safeInt(state.correct),
+      wrong: safeInt(state.wrong),
+      known: Boolean(state.known),
+      needs_practice: state.known ? false : Boolean(state.needsPractice),
+      last_reviewed: typeof state.lastReviewed === "string" ? state.lastReviewed : null,
+      updated_at: updatedAt
+    });
+  }
+
+  return rows;
+};
+
+const toSettingsUpsert = (userId: string, goal: number): UserSettingsUpsert => ({
+  user_id: userId,
+  daily_goal: Math.max(1, Math.round(goal)),
+  updated_at: new Date().toISOString()
+});
+
 const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
   const distractors = Array.from(
     new Set(words.filter((word) => word.id !== correctWord.id).map((word) => word.en))
@@ -59,23 +179,23 @@ const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
 const studyExample = (word: VocabularyWord): string => {
   if (word.pos === "verb") {
     if (word.fi === "olla") {
-      return "Esimerkki: Minä haluan olla ajoissa.";
+      return "Esimerkki: MinÃ¤ haluan olla ajoissa.";
     }
-    return `Esimerkki: Minä yritän ${word.fi} tänään.`;
+    return `Esimerkki: MinÃ¤ yritÃ¤n ${word.fi} tÃ¤nÃ¤Ã¤n.`;
   }
   if (word.pos === "noun") {
-    return `Esimerkki: Tämä on ${word.fi}.`;
+    return `Esimerkki: TÃ¤mÃ¤ on ${word.fi}.`;
   }
   if (word.pos === "adjective") {
-    return `Esimerkki: Tämä tehtävä on ${word.fi}.`;
+    return `Esimerkki: TÃ¤mÃ¤ tehtÃ¤vÃ¤ on ${word.fi}.`;
   }
   if (word.pos === "adverb") {
-    return `Esimerkki: Hän puhuu ${word.fi}.`;
+    return `Esimerkki: HÃ¤n puhuu ${word.fi}.`;
   }
   if (word.pos === "pronoun") {
     return `Esimerkki: Sana "${word.fi}" auttaa keskustelussa.`;
   }
-  return `Esimerkki: Käytän sanaa "${word.fi}" arjessa.`;
+  return `Esimerkki: KÃ¤ytÃ¤n sanaa "${word.fi}" arjessa.`;
 };
 
 export default function App() {
@@ -98,6 +218,29 @@ export default function App() {
   const [searchValue, setSearchValue] = useState("");
   const [topicFilter, setTopicFilter] = useState<WordTopic | "all">("all");
   const [posFilter, setPosFilter] = useState<WordPos | "all">("all");
+  const [session, setSession] = useState<Session | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig ? "loading" : "idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [hasHydratedServer, setHasHydratedServer] = useState(false);
+
+  const progressSaveTimerRef = useRef<number | null>(null);
+  const settingsSaveTimerRef = useRef<number | null>(null);
+  const skipNextProgressSyncRef = useRef(false);
+  const skipNextSettingsSyncRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (progressSaveTimerRef.current !== null) {
+        window.clearTimeout(progressSaveTimerRef.current);
+      }
+      if (settingsSaveTimerRef.current !== null) {
+        window.clearTimeout(settingsSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progressMap));
@@ -107,13 +250,233 @@ export default function App() {
     localStorage.setItem(DAILY_GOAL_KEY, String(dailyGoal));
   }, [dailyGoal]);
 
-  const markWord = (word: VocabularyWord, isCorrect: boolean, known?: boolean): void => {
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+
+    let cancelled = false;
+
+    const loadInitialSession = async (): Promise<void> => {
+      const { data, error } = await client.auth.getSession();
+      if (cancelled) return;
+
+      if (error) {
+        setSyncStatus("error");
+        setSyncError(error.message);
+        return;
+      }
+
+      setSession(data.session ?? null);
+      setSyncStatus(data.session ? "loading" : "idle");
+    };
+
+    void loadInitialSession();
+
+    const {
+      data: { subscription }
+    } = client.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setSyncError(null);
+      setSyncStatus(nextSession ? "loading" : "idle");
+      setHasHydratedServer(false);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+
+    const userId = session?.user.id;
+    if (!userId) {
+      setHasHydratedServer(false);
+      setSyncStatus("idle");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadServerData = async (): Promise<void> => {
+      setSyncStatus("loading");
+      setSyncError(null);
+
+      const [progressResponse, settingsResponse] = await Promise.all([
+        client
+          .from("user_progress")
+          .select("word_id, seen, correct, wrong, known, needs_practice, last_reviewed")
+          .eq("user_id", userId),
+        client.from("user_settings").select("daily_goal").eq("user_id", userId).maybeSingle<UserSettingsRow>()
+      ]);
+
+      if (cancelled) return;
+
+      if (progressResponse.error) {
+        setSyncStatus("error");
+        setSyncError(progressResponse.error.message);
+        setHasHydratedServer(false);
+        return;
+      }
+
+      if (settingsResponse.error) {
+        setSyncStatus("error");
+        setSyncError(settingsResponse.error.message);
+        setHasHydratedServer(false);
+        return;
+      }
+
+      const serverRows = (progressResponse.data ?? []) as UserProgressRow[];
+      const localProgress = safeReadProgress();
+      const localDailyGoal = safeReadDailyGoal();
+
+      let nextProgress = serverRows.length > 0 ? toProgressMapFromRows(serverRows) : localProgress;
+      let nextDailyGoal =
+        Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0
+          ? Math.round(Number(settingsResponse.data?.daily_goal))
+          : localDailyGoal;
+
+      if (serverRows.length === 0 && Object.keys(localProgress).length > 0) {
+        const { error } = await client
+          .from("user_progress")
+          .upsert(toProgressUpserts(userId, localProgress), { onConflict: "user_id,word_id" });
+
+        if (cancelled) return;
+        if (error) {
+          setSyncStatus("error");
+          setSyncError(`Local progress migration failed: ${error.message}`);
+          setHasHydratedServer(false);
+          return;
+        }
+      }
+
+      if (!settingsResponse.data) {
+        const { error } = await client.from("user_settings").upsert(toSettingsUpsert(userId, localDailyGoal), {
+          onConflict: "user_id"
+        });
+
+        if (cancelled) return;
+        if (error) {
+          setSyncStatus("error");
+          setSyncError(`Daily goal migration failed: ${error.message}`);
+          setHasHydratedServer(false);
+          return;
+        }
+      }
+
+      skipNextProgressSyncRef.current = true;
+      skipNextSettingsSyncRef.current = true;
+      setProgressMap(nextProgress);
+      setDailyGoal(nextDailyGoal);
+      setHasHydratedServer(true);
+      setSyncStatus("synced");
+    };
+
+    void loadServerData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+
+    const userId = session?.user.id;
+    if (!userId || !hasHydratedServer) return;
+
+    if (skipNextProgressSyncRef.current) {
+      skipNextProgressSyncRef.current = false;
+      return;
+    }
+
+    if (progressSaveTimerRef.current !== null) {
+      window.clearTimeout(progressSaveTimerRef.current);
+    }
+
+    progressSaveTimerRef.current = window.setTimeout(async () => {
+      const rows = toProgressUpserts(userId, progressMap);
+      if (rows.length === 0) {
+        setSyncStatus("synced");
+        return;
+      }
+
+      setSyncStatus("saving");
+      const { error } = await client.from("user_progress").upsert(rows, { onConflict: "user_id,word_id" });
+
+      if (error) {
+        setSyncStatus("error");
+        setSyncError(error.message);
+        return;
+      }
+
+      setSyncError(null);
+      setSyncStatus("synced");
+    }, SYNC_DEBOUNCE_MS);
+
+    return () => {
+      if (progressSaveTimerRef.current !== null) {
+        window.clearTimeout(progressSaveTimerRef.current);
+        progressSaveTimerRef.current = null;
+      }
+    };
+  }, [hasHydratedServer, progressMap, session?.user.id]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+
+    const userId = session?.user.id;
+    if (!userId || !hasHydratedServer) return;
+
+    if (skipNextSettingsSyncRef.current) {
+      skipNextSettingsSyncRef.current = false;
+      return;
+    }
+
+    if (settingsSaveTimerRef.current !== null) {
+      window.clearTimeout(settingsSaveTimerRef.current);
+    }
+
+    settingsSaveTimerRef.current = window.setTimeout(async () => {
+      setSyncStatus("saving");
+      const { error } = await client.from("user_settings").upsert(toSettingsUpsert(userId, dailyGoal), {
+        onConflict: "user_id"
+      });
+
+      if (error) {
+        setSyncStatus("error");
+        setSyncError(error.message);
+        return;
+      }
+
+      setSyncError(null);
+      setSyncStatus("synced");
+    }, SYNC_DEBOUNCE_MS);
+
+    return () => {
+      if (settingsSaveTimerRef.current !== null) {
+        window.clearTimeout(settingsSaveTimerRef.current);
+        settingsSaveTimerRef.current = null;
+      }
+    };
+  }, [dailyGoal, hasHydratedServer, session?.user.id]);
+
+  const markWord = (
+    word: VocabularyWord,
+    isCorrect: boolean,
+    options?: { known?: boolean; needsPractice?: boolean }
+  ): void => {
     setProgressMap((current) => {
       const prev = current[word.id] ?? {
         seen: 0,
         correct: 0,
         wrong: 0,
         known: false,
+        needsPractice: false,
         lastReviewed: null
       };
 
@@ -123,7 +486,8 @@ export default function App() {
           seen: prev.seen + 1,
           correct: prev.correct + (isCorrect ? 1 : 0),
           wrong: prev.wrong + (isCorrect ? 0 : 1),
-          known: typeof known === "boolean" ? known : prev.known,
+          known: typeof options?.known === "boolean" ? options.known : prev.known,
+          needsPractice: typeof options?.needsPractice === "boolean" ? options.needsPractice : prev.needsPractice,
           lastReviewed: todayIso()
         }
       };
@@ -134,7 +498,10 @@ export default function App() {
     if (studyFilter === "all") return words;
     return words.filter((word) => {
       const known = progressMap[word.id]?.known ?? false;
-      return studyFilter === "known" ? known : !known;
+      const needsPractice = progressMap[word.id]?.needsPractice ?? false;
+      if (studyFilter === "known") return known;
+      if (studyFilter === "practice") return needsPractice;
+      return !known;
     });
   }, [progressMap, studyFilter]);
 
@@ -162,6 +529,7 @@ export default function App() {
   }, [posFilter, searchValue, topicFilter]);
 
   const knownCount = words.filter((word) => progressMap[word.id]?.known).length;
+  const needsPracticeCount = words.filter((word) => progressMap[word.id]?.needsPractice).length;
   const reviewedToday = words.filter((word) => progressMap[word.id]?.lastReviewed === todayIso()).length;
   const totalCorrect = words.reduce((sum, word) => sum + (progressMap[word.id]?.correct ?? 0), 0);
   const totalWrong = words.reduce((sum, word) => sum + (progressMap[word.id]?.wrong ?? 0), 0);
@@ -182,14 +550,14 @@ export default function App() {
 
   const markStudyKnown = (): void => {
     if (!reveal || studyDecision !== "none") return;
-    markWord(studyWord, true, true);
+    markWord(studyWord, true, { known: true, needsPractice: false });
     setStudyDecision("known");
     setStudyKnownSession((prev) => prev + 1);
   };
 
   const markStudyPractice = (): void => {
     if (!reveal || studyDecision !== "none") return;
-    markWord(studyWord, false, false);
+    markWord(studyWord, false, { known: false, needsPractice: true });
     setStudyDecision("practice");
     setStudyPracticeSession((prev) => prev + 1);
   };
@@ -226,6 +594,64 @@ export default function App() {
       setQuizFeedback(`Incorrect. Correct answer: ${quizWord.fi}`);
     }
   };
+
+  const sendMagicLink = async (): Promise<void> => {
+    if (!supabase || authBusy) return;
+
+    const email = authEmail.trim().toLowerCase();
+    if (!email) {
+      setAuthMessage("Enter your email to receive a sign-in link.");
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage("");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin
+      }
+    });
+
+    if (error) {
+      setAuthMessage(`Could not send sign-in link: ${error.message}`);
+    } else {
+      setAuthMessage(`Sign-in link sent to ${email}.`);
+    }
+
+    setAuthBusy(false);
+  };
+
+  const signOut = async (): Promise<void> => {
+    if (!supabase || authBusy) return;
+
+    setAuthBusy(true);
+    setAuthMessage("");
+
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setAuthMessage(`Sign out failed: ${error.message}`);
+    } else {
+      setAuthMessage("Signed out.");
+    }
+
+    setAuthBusy(false);
+  };
+
+  const syncMessage = !hasSupabaseConfig
+    ? "Cloud sync is disabled. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY."
+    : !session
+      ? "Signed out. Progress is saved locally in this browser."
+      : syncStatus === "loading"
+        ? "Sync status: loading from cloud..."
+        : syncStatus === "saving"
+          ? "Sync status: saving..."
+          : syncStatus === "synced"
+            ? "Sync status: up to date."
+            : syncStatus === "error"
+              ? "Sync status: error."
+              : "Sync status: idle.";
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -285,13 +711,72 @@ export default function App() {
               Progress
             </button>
           </nav>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink">Cloud Sync</p>
+                {hasSupabaseConfig && session && (
+                  <p className="text-xs text-slate-600">
+                    Signed in as {session.user.email ?? "your account"}.
+                  </p>
+                )}
+              </div>
+
+              {!hasSupabaseConfig && (
+                <p className="text-xs text-slate-600">Running in local-only mode.</p>
+              )}
+
+              {hasSupabaseConfig && !session && (
+                <form
+                  className="flex w-full max-w-md flex-col gap-2 sm:flex-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendMagicLink();
+                  }}
+                >
+                  <input
+                    type="email"
+                    required
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
+                    placeholder="you@example.com"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    disabled={authBusy}
+                    className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {authBusy ? "Sending..." : "Email Link"}
+                  </button>
+                </form>
+              )}
+
+              {hasSupabaseConfig && session && (
+                <button
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                  onClick={() => {
+                    void signOut();
+                  }}
+                  disabled={authBusy}
+                >
+                  Sign Out
+                </button>
+              )}
+            </div>
+
+            <p className={`mt-2 text-xs ${syncStatus === "error" ? "text-rose-700" : "text-slate-700"}`}>{syncMessage}</p>
+            {syncError && <p className="mt-1 text-xs text-rose-700">{syncError}</p>}
+            {authMessage && <p className="mt-1 text-xs text-slate-700">{authMessage}</p>}
+          </div>
         </header>
 
         {tab === "study" && (
           <section className="glass card-shadow rounded-3xl p-5 md:p-8">
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">Study mode:</span>
-              {(["all", "unknown", "known"] as StudyFilter[]).map((mode) => (
+              {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
                 <button
                   key={mode}
                   className={`rounded-lg border px-3 py-1 text-sm ${
@@ -301,13 +786,13 @@ export default function App() {
                   }`}
                   onClick={() => setStudyFilter(mode)}
                 >
-                  {mode}
+                  {mode === "practice" ? "needs practice" : mode}
                 </button>
               ))}
               <span className="ml-auto text-xs text-slate-700">Pool: {studyPool.length}</span>
             </div>
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <article className="rounded-2xl border border-slate-200 bg-white p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Reviewed Today</p>
                 <p className="mt-1 text-2xl font-bold text-ink">{reviewedToday}</p>
@@ -315,6 +800,10 @@ export default function App() {
               <article className="rounded-2xl border border-slate-200 bg-white p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Accuracy</p>
                 <p className="mt-1 text-2xl font-bold text-ink">{accuracy}%</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Needs Practice</p>
+                <p className="mt-1 text-2xl font-bold text-ink">{needsPracticeCount}</p>
               </article>
               <article className="rounded-2xl border border-slate-200 bg-white p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Session Known</p>
@@ -548,6 +1037,7 @@ export default function App() {
                     <th className="px-3 py-2">Simple Finnish</th>
                     <th className="px-3 py-2">Topic</th>
                     <th className="px-3 py-2">Known</th>
+                    <th className="px-3 py-2">Needs Practice</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,6 +1048,7 @@ export default function App() {
                       <td className="px-3 py-2 text-slate-700">{word.fiSimple}</td>
                       <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-600">{word.topic}</td>
                       <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.known ? "yes" : "no"}</td>
+                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.needsPractice ? "yes" : "no"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -568,10 +1059,14 @@ export default function App() {
 
         {tab === "progress" && (
           <section className="glass card-shadow rounded-3xl p-5 md:p-8">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <article className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Known Words</p>
                 <p className="mt-2 text-3xl font-bold text-ink">{knownCount}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-600">Needs Practice</p>
+                <p className="mt-2 text-3xl font-bold text-ink">{needsPracticeCount}</p>
               </article>
               <article className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Accuracy</p>
@@ -619,9 +1114,4 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
 
