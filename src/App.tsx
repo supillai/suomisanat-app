@@ -198,6 +198,177 @@ const studyExample = (word: VocabularyWord): string => {
   return `Esimerkki: KÃ¤ytÃ¤n sanaa "${word.fi}" arjessa.`;
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const maskedSimpleExplanation = (word: VocabularyWord): string => {
+  if (!word.fiSimple.trim()) return "";
+
+  const escapedWord = escapeRegExp(word.fi);
+  if (!escapedWord) return word.fiSimple;
+
+  const masked = word.fiSimple.replace(new RegExp(escapedWord, "giu"), "____");
+  return masked;
+};
+
+const buildStudyHints = (word: VocabularyWord): string[] => {
+  const hints: string[] = [];
+  const compactFinnish = word.fi.replace(/\s+/g, "");
+  const firstLetter = compactFinnish[0] ?? word.fi[0] ?? "";
+  const letterCount = Array.from(compactFinnish).length;
+  const hasFinnishSpecialLetters = /[\u00E5\u00E4\u00F6]/iu.test(word.fi);
+  const maskedExplanation = maskedSimpleExplanation(word);
+
+  hints.push(`Topic: ${word.topic}. Part of speech: ${word.pos}.`);
+
+  if (firstLetter) {
+    hints.push(`Starts with "${firstLetter.toUpperCase()}" and has ${letterCount} letters.`);
+  }
+
+  if (hasFinnishSpecialLetters) {
+    hints.push("Contains Finnish special letters.");
+  }
+
+  if (maskedExplanation.trim()) {
+    hints.push(`Simple Finnish clue: ${maskedExplanation}`);
+  }
+
+  return hints;
+};
+
+const levenshteinDistance = (source: string, target: string): number => {
+  if (source === target) return 0;
+  if (!source) return target.length;
+  if (!target) return source.length;
+
+  const previousRow = Array.from({ length: target.length + 1 }, (_, index) => index);
+  const currentRow = new Array<number>(target.length + 1).fill(0);
+
+  for (let sourceIndex = 1; sourceIndex <= source.length; sourceIndex += 1) {
+    currentRow[0] = sourceIndex;
+
+    for (let targetIndex = 1; targetIndex <= target.length; targetIndex += 1) {
+      const sourceChar = source[sourceIndex - 1];
+      const targetChar = target[targetIndex - 1];
+      const substitutionCost = sourceChar === targetChar ? 0 : 1;
+
+      currentRow[targetIndex] = Math.min(
+        currentRow[targetIndex - 1] + 1,
+        previousRow[targetIndex] + 1,
+        previousRow[targetIndex - 1] + substitutionCost
+      );
+    }
+
+    for (let index = 0; index < currentRow.length; index += 1) {
+      previousRow[index] = currentRow[index];
+    }
+  }
+
+  return previousRow[target.length];
+};
+
+const longestCommonPrefixLength = (first: string, second: string): number => {
+  const maxLength = Math.min(first.length, second.length);
+  let length = 0;
+
+  while (length < maxLength && first[length] === second[length]) {
+    length += 1;
+  }
+
+  return length;
+};
+
+const buildTypingMistakeFeedback = (typedValue: string, word: VocabularyWord): string => {
+  const typed = typedValue.trim().toLowerCase();
+  const expected = word.fi.trim().toLowerCase();
+  const normalizedTyped = normalizeFinnish(typed);
+  const normalizedExpected = normalizeFinnish(expected);
+  const notes: string[] = [];
+
+  if (!typed) {
+    return `Incorrect. Correct answer: ${word.fi}.`;
+  }
+
+  if (normalizeFinnish(word.en) === normalizedTyped) {
+    notes.push("You entered English. This mode expects Finnish.");
+  }
+
+  const distance = levenshteinDistance(normalizedTyped, normalizedExpected);
+  if (distance <= 1) {
+    notes.push("Very close: one character off.");
+  } else if (distance === 2) {
+    notes.push("Close: two edits away.");
+  } else if (distance <= 4) {
+    notes.push("Partly correct. Check middle letters and ending.");
+  } else {
+    notes.push("Try recalling by topic and first letter.");
+  }
+
+  const commonPrefixLength = longestCommonPrefixLength(normalizedTyped, normalizedExpected);
+  if (commonPrefixLength >= 3 && commonPrefixLength < normalizedExpected.length) {
+    notes.push("Beginning looks good, check the ending.");
+  }
+
+  const expectedDoubleLetter = expected.match(/([a-z\u00E5\u00E4\u00F6])\1/iu)?.[0];
+  if (expectedDoubleLetter && !typed.includes(expectedDoubleLetter)) {
+    notes.push(`Watch double letters like "${expectedDoubleLetter}".`);
+  }
+
+  const expectedSpecialLetters = /[\u00E5\u00E4\u00F6]/iu.test(expected);
+  const typedSpecialLetters = /[\u00E5\u00E4\u00F6]/iu.test(typed);
+  if (expectedSpecialLetters && !typedSpecialLetters) {
+    notes.push("This word uses Finnish special letters.");
+  }
+
+  const detail = Array.from(new Set(notes)).slice(0, 2).join(" ");
+  return detail ? `Incorrect. Correct answer: ${word.fi}. ${detail}` : `Incorrect. Correct answer: ${word.fi}.`;
+};
+
+const daysSinceIsoDate = (isoDate: string | null): number | null => {
+  if (!isoDate) return null;
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const parsedStart = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  const diffMs = todayStart.getTime() - parsedStart.getTime();
+
+  return Math.max(0, Math.floor(diffMs / 86_400_000));
+};
+
+const miniDrillScore = (state: ProgressState | undefined): number => {
+  if (!state) return 7;
+
+  const totalAnswers = state.correct + state.wrong;
+  const accuracy = totalAnswers > 0 ? state.correct / totalAnswers : 0;
+  const reviewGap = daysSinceIsoDate(state.lastReviewed);
+
+  let score = 0;
+  score += state.needsPractice ? 8 : 0;
+  score += state.wrong * 2;
+  score += state.known ? 0 : 2;
+  score += totalAnswers === 0 ? 4 : accuracy < 0.6 ? 3 : accuracy < 0.8 ? 1 : 0;
+  score += reviewGap === null ? 2 : reviewGap >= 7 ? 3 : reviewGap >= 3 ? 1 : 0;
+  score -= state.known && !state.needsPractice && accuracy >= 0.9 && reviewGap !== null && reviewGap < 3 ? 4 : 0;
+
+  return score;
+};
+
+const miniDrillReason = (state: ProgressState | undefined): string => {
+  if (!state || state.seen === 0) return "New or never reviewed";
+  if (state.needsPractice) return "Marked as needs practice";
+
+  const totalAnswers = state.correct + state.wrong;
+  const accuracy = totalAnswers > 0 ? Math.round((state.correct / totalAnswers) * 100) : 0;
+  if (accuracy < 60) return `Low accuracy (${accuracy}%)`;
+
+  const reviewGap = daysSinceIsoDate(state.lastReviewed);
+  if (reviewGap !== null && reviewGap >= 7) return `${reviewGap} days since review`;
+  if (state.wrong > 0) return `${state.wrong} wrong answers recorded`;
+
+  return "Good refresh candidate";
+};
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("study");
   const [progressMap, setProgressMap] = useState<ProgressMap>(() => safeReadProgress());
@@ -205,6 +376,7 @@ export default function App() {
   const [studyFilter, setStudyFilter] = useState<StudyFilter>("all");
   const [studyWord, setStudyWord] = useState<VocabularyWord>(() => words[0]);
   const [reveal, setReveal] = useState(false);
+  const [studyHintLevel, setStudyHintLevel] = useState(0);
   const [studyDecision, setStudyDecision] = useState<StudyDecision>("none");
   const [studyKnownSession, setStudyKnownSession] = useState(0);
   const [studyPracticeSession, setStudyPracticeSession] = useState(0);
@@ -215,6 +387,8 @@ export default function App() {
   const [quizFeedback, setQuizFeedback] = useState("");
   const [quizCorrect, setQuizCorrect] = useState(0);
   const [quizWrong, setQuizWrong] = useState(0);
+  const [miniDrillQueue, setMiniDrillQueue] = useState<number[]>([]);
+  const [miniDrillIndex, setMiniDrillIndex] = useState(0);
   const [searchValue, setSearchValue] = useState("");
   const [topicFilter, setTopicFilter] = useState<WordTopic | "all">("all");
   const [posFilter, setPosFilter] = useState<WordPos | "all">("all");
@@ -222,6 +396,7 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
+  const [showCloudSync, setShowCloudSync] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig ? "loading" : "idle");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasHydratedServer, setHasHydratedServer] = useState(false);
@@ -505,14 +680,50 @@ export default function App() {
     });
   }, [progressMap, studyFilter]);
 
+  const studyHints = useMemo(() => buildStudyHints(studyWord), [studyWord]);
+
+  const miniDrillRecommendations = useMemo(() => {
+    const scored = words
+      .map((word) => {
+        const state = progressMap[word.id];
+        return {
+          word,
+          score: miniDrillScore(state),
+          reason: miniDrillReason(state),
+          daysSinceReview: daysSinceIsoDate(state?.lastReviewed)
+        };
+      })
+      .sort((first, second) => {
+        if (second.score !== first.score) return second.score - first.score;
+
+        const firstDays = first.daysSinceReview ?? Number.MAX_SAFE_INTEGER;
+        const secondDays = second.daysSinceReview ?? Number.MAX_SAFE_INTEGER;
+        if (secondDays !== firstDays) return secondDays - firstDays;
+
+        return first.word.id - second.word.id;
+      });
+
+    const topPriority = scored.filter((item) => item.score > 0).slice(0, 5);
+    return topPriority.length > 0 ? topPriority : scored.slice(0, 5);
+  }, [progressMap]);
+
+  const miniDrillActive = miniDrillQueue.length > 0;
+  const miniDrillProgress = miniDrillActive ? `${Math.min(miniDrillIndex + 1, miniDrillQueue.length)}/${miniDrillQueue.length}` : "";
+  const miniDrillLastQuestion = miniDrillActive && miniDrillIndex >= miniDrillQueue.length - 1;
+
   useEffect(() => {
     if (!studyPool.some((word) => word.id === studyWord.id)) {
       const fallback = studyPool.length > 0 ? studyPool[0] : words[0];
       setStudyWord(fallback);
       setReveal(false);
+      setStudyHintLevel(0);
       setStudyDecision("none");
     }
   }, [studyPool, studyWord.id]);
+
+  useEffect(() => {
+    setStudyHintLevel(0);
+  }, [studyWord.id]);
 
   const filteredWords = useMemo(() => {
     return words.filter((word) => {
@@ -528,6 +739,7 @@ export default function App() {
     });
   }, [posFilter, searchValue, topicFilter]);
 
+  const totalWords = words.length;
   const knownCount = words.filter((word) => progressMap[word.id]?.known).length;
   const needsPracticeCount = words.filter((word) => progressMap[word.id]?.needsPractice).length;
   const reviewedToday = words.filter((word) => progressMap[word.id]?.lastReviewed === todayIso()).length;
@@ -540,12 +752,41 @@ export default function App() {
     const pool = studyPool.length > 0 ? studyPool : words;
     setStudyWord(randomFrom(pool));
     setReveal(false);
+    setStudyHintLevel(0);
     setStudyDecision("none");
   };
 
   const revealStudyWord = (): void => {
     setReveal(true);
     setStudyDecision("none");
+  };
+
+  const revealStudyHint = (): void => {
+    if (reveal) return;
+    setStudyHintLevel((current) => Math.min(current + 1, studyHints.length));
+  };
+
+  const setQuizWordAndReset = (word: VocabularyWord): void => {
+    setQuizWord(word);
+    setQuizOptions(pickQuizOptions(word));
+    setTypingValue("");
+    setQuizFeedback("");
+  };
+
+  const startMiniDrill = (): void => {
+    const queue = miniDrillRecommendations.map((item) => item.word.id);
+    if (queue.length === 0) return;
+
+    setMiniDrillQueue(queue);
+    setMiniDrillIndex(0);
+    const firstWord = words.find((word) => word.id === queue[0]) ?? words[0];
+    setQuizWordAndReset(firstWord);
+    setTab("quiz");
+  };
+
+  const stopMiniDrill = (): void => {
+    setMiniDrillQueue([]);
+    setMiniDrillIndex(0);
   };
 
   const markStudyKnown = (): void => {
@@ -563,11 +804,25 @@ export default function App() {
   };
 
   const nextQuiz = (): void => {
+    if (miniDrillQueue.length > 0) {
+      const nextIndex = miniDrillIndex + 1;
+      if (nextIndex < miniDrillQueue.length) {
+        const nextWordId = miniDrillQueue[nextIndex];
+        const nextWord = words.find((word) => word.id === nextWordId);
+
+        if (nextWord) {
+          setMiniDrillIndex(nextIndex);
+          setQuizWordAndReset(nextWord);
+          return;
+        }
+      }
+
+      setMiniDrillQueue([]);
+      setMiniDrillIndex(0);
+    }
+
     const next = randomFrom(words);
-    setQuizWord(next);
-    setQuizOptions(pickQuizOptions(next));
-    setTypingValue("");
-    setQuizFeedback("");
+    setQuizWordAndReset(next);
   };
 
   const answerMcq = (option: string): void => {
@@ -591,7 +846,7 @@ export default function App() {
       setQuizFeedback("Correct.");
     } else {
       setQuizWrong((prev) => prev + 1);
-      setQuizFeedback(`Incorrect. Correct answer: ${quizWord.fi}`);
+      setQuizFeedback(buildTypingMistakeFeedback(typingValue, quizWord));
     }
   };
 
@@ -656,22 +911,94 @@ export default function App() {
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <header className="glass card-shadow mb-6 rounded-3xl p-5 md:p-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-ink md:text-4xl">SuomiSanat</h1>
-              <p className="mt-2 max-w-xl text-sm text-slate-700 md:text-base">
-                337 Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
-              </p>
+        <header className="glass card-shadow mb-4 rounded-3xl p-4 md:p-5">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-2xl font-extrabold tracking-tight text-ink md:text-3xl">SuomiSanat</h1>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="sun-gradient inline-flex rounded-2xl px-3 py-2 text-xs font-semibold text-ink">
+                  Known: {knownCount}/{totalWords}
+                </div>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
+                  onClick={() => setShowCloudSync((current) => !current)}
+                  aria-expanded={showCloudSync}
+                  aria-controls="cloud-sync-panel"
+                >
+                  Cloud Sync {showCloudSync ? "^" : "v"}
+                </button>
+              </div>
             </div>
-            <div className="sun-gradient inline-flex rounded-2xl px-4 py-3 text-sm font-semibold text-ink">
-              Known: {knownCount}/500
-            </div>
+
+            <p className="max-w-xl text-xs text-slate-700 md:text-sm">
+              {totalWords} Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
+            </p>
+
+            {showCloudSync && (
+              <div id="cloud-sync-panel" className="rounded-2xl border border-slate-200 bg-white p-2.5">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      {hasSupabaseConfig && session && (
+                        <p className="text-[11px] text-slate-600">
+                          Signed in as {session.user.email ?? "your account"}.
+                        </p>
+                      )}
+                      {!hasSupabaseConfig && <p className="text-xs text-slate-600">Running in local-only mode.</p>}
+                    </div>
+
+                    {hasSupabaseConfig && session && (
+                      <button
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                        onClick={() => {
+                          void signOut();
+                        }}
+                        disabled={authBusy}
+                      >
+                        Sign Out
+                      </button>
+                    )}
+                  </div>
+
+                  {hasSupabaseConfig && !session && (
+                    <form
+                      className="flex w-full flex-col gap-2 sm:flex-row"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void sendMagicLink();
+                      }}
+                    >
+                      <input
+                        type="email"
+                        required
+                        className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-accent focus:outline-none"
+                        placeholder="you@example.com"
+                        value={authEmail}
+                        onChange={(event) => setAuthEmail(event.target.value)}
+                      />
+                      <button
+                        type="submit"
+                        disabled={authBusy}
+                        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {authBusy ? "Sending..." : "Email Link"}
+                      </button>
+                    </form>
+                  )}
+
+                  <p className={`text-[11px] ${syncStatus === "error" ? "text-rose-700" : "text-slate-700"}`}>{syncMessage}</p>
+                  {syncError && <p className="text-[11px] text-rose-700">{syncError}</p>}
+                  {authMessage && <p className="text-[11px] text-slate-700">{authMessage}</p>}
+                </div>
+              </div>
+            )}
           </div>
 
-          <nav className="mt-6 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+          <nav className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
             <button
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
                 tab === "study"
                   ? "accent-gradient border-transparent text-white"
                   : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
@@ -681,7 +1008,7 @@ export default function App() {
               Study
             </button>
             <button
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
                 tab === "quiz"
                   ? "accent-gradient border-transparent text-white"
                   : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
@@ -691,7 +1018,7 @@ export default function App() {
               Quiz
             </button>
             <button
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
                 tab === "list"
                   ? "accent-gradient border-transparent text-white"
                   : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
@@ -701,7 +1028,7 @@ export default function App() {
               Word List
             </button>
             <button
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
                 tab === "progress"
                   ? "accent-gradient border-transparent text-white"
                   : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
@@ -712,74 +1039,16 @@ export default function App() {
             </button>
           </nav>
 
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-ink">Cloud Sync</p>
-                {hasSupabaseConfig && session && (
-                  <p className="text-xs text-slate-600">
-                    Signed in as {session.user.email ?? "your account"}.
-                  </p>
-                )}
-              </div>
-
-              {!hasSupabaseConfig && (
-                <p className="text-xs text-slate-600">Running in local-only mode.</p>
-              )}
-
-              {hasSupabaseConfig && !session && (
-                <form
-                  className="flex w-full max-w-md flex-col gap-2 sm:flex-row"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void sendMagicLink();
-                  }}
-                >
-                  <input
-                    type="email"
-                    required
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
-                    placeholder="you@example.com"
-                    value={authEmail}
-                    onChange={(event) => setAuthEmail(event.target.value)}
-                  />
-                  <button
-                    type="submit"
-                    disabled={authBusy}
-                    className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {authBusy ? "Sending..." : "Email Link"}
-                  </button>
-                </form>
-              )}
-
-              {hasSupabaseConfig && session && (
-                <button
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                  onClick={() => {
-                    void signOut();
-                  }}
-                  disabled={authBusy}
-                >
-                  Sign Out
-                </button>
-              )}
-            </div>
-
-            <p className={`mt-2 text-xs ${syncStatus === "error" ? "text-rose-700" : "text-slate-700"}`}>{syncMessage}</p>
-            {syncError && <p className="mt-1 text-xs text-rose-700">{syncError}</p>}
-            {authMessage && <p className="mt-1 text-xs text-slate-700">{authMessage}</p>}
-          </div>
         </header>
 
         {tab === "study" && (
-          <section className="glass card-shadow rounded-3xl p-5 md:p-8">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-slate-700">Study mode:</span>
+          <section className="glass card-shadow rounded-3xl p-4 md:p-6">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-700">Study mode:</span>
               {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
                 <button
                   key={mode}
-                  className={`rounded-lg border px-3 py-1 text-sm ${
+                  className={`rounded-lg border px-2 py-1 text-xs ${
                     studyFilter === mode
                       ? "accent-gradient border-transparent text-white"
                       : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
@@ -792,41 +1061,41 @@ export default function App() {
               <span className="ml-auto text-xs text-slate-700">Pool: {studyPool.length}</span>
             </div>
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <article className="rounded-2xl border border-slate-200 bg-white p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-600">Reviewed Today</p>
-                <p className="mt-1 text-2xl font-bold text-ink">{reviewedToday}</p>
+            <div className="mb-3 grid gap-2 grid-cols-2 lg:grid-cols-5">
+              <article className="rounded-xl border border-slate-200 bg-white p-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-600">Reviewed</p>
+                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{reviewedToday}</p>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-600">Accuracy</p>
-                <p className="mt-1 text-2xl font-bold text-ink">{accuracy}%</p>
+              <article className="rounded-xl border border-slate-200 bg-white p-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-600">Accuracy</p>
+                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{accuracy}%</p>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-600">Needs Practice</p>
-                <p className="mt-1 text-2xl font-bold text-ink">{needsPracticeCount}</p>
+              <article className="rounded-xl border border-slate-200 bg-white p-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-600">Practice</p>
+                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{needsPracticeCount}</p>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-600">Session Known</p>
-                <p className="mt-1 text-2xl font-bold text-ink">{studyKnownSession}</p>
+              <article className="rounded-xl border border-slate-200 bg-white p-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-600">Session Known</p>
+                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{studyKnownSession}</p>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-600">Session Practice</p>
-                <p className="mt-1 text-2xl font-bold text-ink">{studyPracticeSession}</p>
+              <article className="rounded-xl border border-slate-200 bg-white p-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-600">Session Practice</p>
+                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{studyPracticeSession}</p>
               </article>
             </div>
 
-            <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-ink">Daily goal progress</p>
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-xs font-semibold text-ink">Daily goal progress</p>
                 <span className="text-xs text-slate-700">
                   {reviewedToday}/{dailyGoal}
                 </span>
               </div>
-              <div className="h-3 rounded-full bg-slate-200">
-                <div className="h-3 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+              <div className="h-2.5 rounded-full bg-slate-200">
+                <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
+              <div className="mt-2 flex items-center gap-2">
+                <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
                   Daily goal
                 </label>
                 <input
@@ -834,7 +1103,7 @@ export default function App() {
                   type="number"
                   min={5}
                   max={200}
-                  className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                  className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
                   value={dailyGoal}
                   onChange={(event) => {
                     const parsed = Number(event.target.value);
@@ -857,6 +1126,15 @@ export default function App() {
               </div>
               <h2 className="mt-3 text-4xl font-extrabold text-ink md:text-5xl">{studyWord.fi}</h2>
               {!reveal && <p className="mt-4 text-sm text-slate-700">Try to recall the meaning, then reveal.</p>}
+              {!reveal && studyHintLevel > 0 && (
+                <div className="mx-auto mt-4 max-w-xl space-y-2 text-left">
+                  {studyHints.slice(0, studyHintLevel).map((hint, index) => (
+                    <p key={`${studyWord.id}-hint-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                      Hint {index + 1}: {hint}
+                    </p>
+                  ))}
+                </div>
+              )}
               {reveal && (
                 <div className="mt-4 space-y-2">
                   <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
@@ -867,9 +1145,16 @@ export default function App() {
             </div>
 
             {!reveal && (
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <div className="mt-5 grid gap-2 sm:grid-cols-3">
                 <button className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white" onClick={revealStudyWord}>
                   Reveal Meaning
+                </button>
+                <button
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={revealStudyHint}
+                  disabled={studyHintLevel >= studyHints.length}
+                >
+                  {studyHintLevel === 0 ? "Get Hint" : studyHintLevel >= studyHints.length ? "No More Hints" : "More Hint"}
                 </button>
                 <button
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
@@ -937,6 +1222,11 @@ export default function App() {
               <span className="ml-auto text-xs text-slate-700">
                 Score: {quizCorrect} correct / {quizWrong} wrong
               </span>
+              {miniDrillActive && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+                  Mini drill: {miniDrillProgress}
+                </span>
+              )}
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6">
@@ -986,8 +1276,16 @@ export default function App() {
               className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
               onClick={nextQuiz}
             >
-              Next Question
+              {miniDrillLastQuestion ? "Finish Mini Drill" : "Next Question"}
             </button>
+            {miniDrillActive && (
+              <button
+                className="ml-2 mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                onClick={stopMiniDrill}
+              >
+                Exit Mini Drill
+              </button>
+            )}
           </section>
         )}
 
@@ -1026,7 +1324,7 @@ export default function App() {
               </select>
             </div>
 
-            <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of 500 words</p>
+            <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of {totalWords} words</p>
 
             <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white">
               <table className="w-full min-w-[700px] text-left text-sm">
@@ -1108,11 +1406,37 @@ export default function App() {
                 />
               </div>
             </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-ink">Daily Mini Drill</p>
+                  <p className="text-xs text-slate-700">Top 5 words selected from weak or stale items.</p>
+                </div>
+                <button
+                  className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900"
+                  onClick={startMiniDrill}
+                >
+                  Start Mini Drill
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {miniDrillRecommendations.map((item) => (
+                  <article key={`mini-drill-${item.word.id}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-base font-bold text-ink">{item.word.fi}</p>
+                    <p className="text-xs text-slate-700">{item.word.en}</p>
+                    <p className="mt-2 text-xs text-slate-600">{item.reason}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
           </section>
         )}
       </div>
     </div>
   );
 }
+
 
 
