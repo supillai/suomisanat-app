@@ -27,6 +27,7 @@ export type ProgressState = {
   known: boolean;
   needsPractice: boolean;
   lastReviewed: string | null;
+  updatedAt?: string | null;
 };
 
 export type ProgressMap = Record<number, ProgressState>;

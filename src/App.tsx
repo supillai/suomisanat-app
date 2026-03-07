@@ -18,6 +18,7 @@ type UserProgressRow = {
   known: boolean | null;
   needs_practice: boolean | null;
   last_reviewed: string | null;
+  updated_at: string | null;
 };
 
 type UserProgressUpsert = {
@@ -90,7 +91,8 @@ const safeReadProgress = (): ProgressMap => {
         wrong: Number.isFinite(wrong) && wrong >= 0 ? Math.round(wrong) : 0,
         known,
         needsPractice,
-        lastReviewed: typeof value.lastReviewed === "string" ? value.lastReviewed : null
+        lastReviewed: typeof value.lastReviewed === "string" ? value.lastReviewed : null,
+        updatedAt: safeTimestamp(value.updatedAt)
       };
     }
 
@@ -114,6 +116,104 @@ const safeInt = (value: number | null | undefined): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : 0;
 };
 
+const safeTimestamp = (value: string | null | undefined): string | null => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return Number.isNaN(Date.parse(value)) ? null : value;
+};
+
+const laterIsoDate = (first: string | null, second: string | null): string | null => {
+  if (!first) return second;
+  if (!second) return first;
+  return first >= second ? first : second;
+};
+
+const progressActivityScore = (state: ProgressState): number => state.seen + state.correct + state.wrong;
+
+const pickPreferredProgressState = (first: ProgressState, second: ProgressState): ProgressState => {
+  const firstUpdatedAt = safeTimestamp(first.updatedAt);
+  const secondUpdatedAt = safeTimestamp(second.updatedAt);
+
+  if (firstUpdatedAt && secondUpdatedAt && firstUpdatedAt !== secondUpdatedAt) {
+    return firstUpdatedAt > secondUpdatedAt ? first : second;
+  }
+
+  if (firstUpdatedAt && !secondUpdatedAt) return first;
+  if (secondUpdatedAt && !firstUpdatedAt) return second;
+
+  if (first.lastReviewed && second.lastReviewed && first.lastReviewed !== second.lastReviewed) {
+    return first.lastReviewed > second.lastReviewed ? first : second;
+  }
+
+  if (first.lastReviewed && !second.lastReviewed) return first;
+  if (second.lastReviewed && !first.lastReviewed) return second;
+
+  return progressActivityScore(first) >= progressActivityScore(second) ? first : second;
+};
+
+const mergeProgressState = (
+  localState: ProgressState | undefined,
+  serverState: ProgressState | undefined
+): ProgressState | undefined => {
+  if (!localState) return serverState;
+  if (!serverState) return localState;
+
+  const preferred = pickPreferredProgressState(localState, serverState);
+  const known = Boolean(preferred.known);
+
+  return {
+    seen: Math.max(safeInt(localState.seen), safeInt(serverState.seen)),
+    correct: Math.max(safeInt(localState.correct), safeInt(serverState.correct)),
+    wrong: Math.max(safeInt(localState.wrong), safeInt(serverState.wrong)),
+    known,
+    needsPractice: known ? false : Boolean(preferred.needsPractice),
+    lastReviewed: laterIsoDate(localState.lastReviewed, serverState.lastReviewed),
+    updatedAt: safeTimestamp(preferred.updatedAt)
+  };
+};
+
+const mergeProgressMaps = (localMap: ProgressMap, serverMap: ProgressMap): ProgressMap => {
+  const merged: ProgressMap = {};
+  const wordIds = new Set([...Object.keys(localMap), ...Object.keys(serverMap)].map((value) => Number(value)));
+
+  for (const wordId of wordIds) {
+    if (!Number.isFinite(wordId)) continue;
+    const state = mergeProgressState(localMap[wordId], serverMap[wordId]);
+    if (state) {
+      merged[wordId] = state;
+    }
+  }
+
+  return merged;
+};
+
+const progressStatesEqual = (first: ProgressState | undefined, second: ProgressState | undefined): boolean => {
+  if (!first && !second) return true;
+  if (!first || !second) return false;
+
+  return (
+    safeInt(first.seen) === safeInt(second.seen) &&
+    safeInt(first.correct) === safeInt(second.correct) &&
+    safeInt(first.wrong) === safeInt(second.wrong) &&
+    Boolean(first.known) === Boolean(second.known) &&
+    (Boolean(first.known) ? false : Boolean(first.needsPractice)) ===
+      (Boolean(second.known) ? false : Boolean(second.needsPractice)) &&
+    (first.lastReviewed ?? null) === (second.lastReviewed ?? null)
+  );
+};
+
+const progressMapsEqual = (first: ProgressMap, second: ProgressMap): boolean => {
+  const wordIds = new Set([...Object.keys(first), ...Object.keys(second)].map((value) => Number(value)));
+
+  for (const wordId of wordIds) {
+    if (!Number.isFinite(wordId)) continue;
+    if (!progressStatesEqual(first[wordId], second[wordId])) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const toProgressMapFromRows = (rows: UserProgressRow[] | null | undefined): ProgressMap => {
   const map: ProgressMap = {};
 
@@ -129,7 +229,8 @@ const toProgressMapFromRows = (rows: UserProgressRow[] | null | undefined): Prog
       wrong: safeInt(row.wrong),
       known,
       needsPractice,
-      lastReviewed: typeof row.last_reviewed === "string" ? row.last_reviewed : null
+      lastReviewed: typeof row.last_reviewed === "string" ? row.last_reviewed : null,
+      updatedAt: safeTimestamp(row.updated_at)
     };
   }
 
@@ -137,7 +238,7 @@ const toProgressMapFromRows = (rows: UserProgressRow[] | null | undefined): Prog
 };
 
 const toProgressUpserts = (userId: string, map: ProgressMap): UserProgressUpsert[] => {
-  const updatedAt = new Date().toISOString();
+  const fallbackUpdatedAt = new Date().toISOString();
   const rows: UserProgressUpsert[] = [];
 
   for (const [rawWordId, state] of Object.entries(map)) {
@@ -153,7 +254,7 @@ const toProgressUpserts = (userId: string, map: ProgressMap): UserProgressUpsert
       known: Boolean(state.known),
       needs_practice: state.known ? false : Boolean(state.needsPractice),
       last_reviewed: typeof state.lastReviewed === "string" ? state.lastReviewed : null,
-      updated_at: updatedAt
+      updated_at: safeTimestamp(state.updatedAt) ?? fallbackUpdatedAt
     });
   }
 
@@ -482,7 +583,7 @@ export default function App() {
       const [progressResponse, settingsResponse] = await Promise.all([
         client
           .from("user_progress")
-          .select("word_id, seen, correct, wrong, known, needs_practice, last_reviewed")
+          .select("word_id, seen, correct, wrong, known, needs_practice, last_reviewed, updated_at")
           .eq("user_id", userId),
         client.from("user_settings").select("daily_goal").eq("user_id", userId).maybeSingle<UserSettingsRow>()
       ]);
@@ -504,24 +605,25 @@ export default function App() {
       }
 
       const serverRows = (progressResponse.data ?? []) as UserProgressRow[];
+      const serverProgress = toProgressMapFromRows(serverRows);
       const localProgress = safeReadProgress();
       const localDailyGoal = safeReadDailyGoal();
 
-      let nextProgress = serverRows.length > 0 ? toProgressMapFromRows(serverRows) : localProgress;
+      let nextProgress = mergeProgressMaps(localProgress, serverProgress);
       let nextDailyGoal =
         Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0
           ? Math.round(Number(settingsResponse.data?.daily_goal))
           : localDailyGoal;
 
-      if (serverRows.length === 0 && Object.keys(localProgress).length > 0) {
+      if (Object.keys(nextProgress).length > 0 && !progressMapsEqual(nextProgress, serverProgress)) {
         const { error } = await client
           .from("user_progress")
-          .upsert(toProgressUpserts(userId, localProgress), { onConflict: "user_id,word_id" });
+          .upsert(toProgressUpserts(userId, nextProgress), { onConflict: "user_id,word_id" });
 
         if (cancelled) return;
         if (error) {
           setSyncStatus("error");
-          setSyncError(`Local progress migration failed: ${error.message}`);
+          setSyncError(`Progress reconciliation failed: ${error.message}`);
           setHasHydratedServer(false);
           return;
         }
@@ -646,13 +748,15 @@ export default function App() {
     options?: { known?: boolean; needsPractice?: boolean }
   ): void => {
     setProgressMap((current) => {
+      const updatedAt = new Date().toISOString();
       const prev = current[word.id] ?? {
         seen: 0,
         correct: 0,
         wrong: 0,
         known: false,
         needsPractice: false,
-        lastReviewed: null
+        lastReviewed: null,
+        updatedAt: null
       };
 
       return {
@@ -663,7 +767,8 @@ export default function App() {
           wrong: prev.wrong + (isCorrect ? 0 : 1),
           known: typeof options?.known === "boolean" ? options.known : prev.known,
           needsPractice: typeof options?.needsPractice === "boolean" ? options.needsPractice : prev.needsPractice,
-          lastReviewed: todayIso()
+          lastReviewed: todayIso(),
+          updatedAt
         }
       };
     });
@@ -1437,6 +1542,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
