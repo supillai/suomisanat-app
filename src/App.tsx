@@ -506,6 +506,11 @@ export default function App() {
   const settingsSaveTimerRef = useRef<number | null>(null);
   const skipNextProgressSyncRef = useRef(false);
   const skipNextSettingsSyncRef = useRef(false);
+  const progressMapRef = useRef<ProgressMap>(progressMap);
+  const dailyGoalRef = useRef<number>(dailyGoal);
+  const sessionRef = useRef<Session | null>(session);
+  const hasHydratedServerRef = useRef<boolean>(hasHydratedServer);
+  const flushSyncInFlightRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -525,6 +530,80 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(DAILY_GOAL_KEY, String(dailyGoal));
   }, [dailyGoal]);
+
+  useEffect(() => {
+    progressMapRef.current = progressMap;
+  }, [progressMap]);
+
+  useEffect(() => {
+    dailyGoalRef.current = dailyGoal;
+  }, [dailyGoal]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    hasHydratedServerRef.current = hasHydratedServer;
+  }, [hasHydratedServer]);
+
+  const flushSyncNow = async (): Promise<void> => {
+    const client = supabase;
+    const userId = sessionRef.current?.user.id;
+    if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current) return;
+
+    flushSyncInFlightRef.current = true;
+
+    if (progressSaveTimerRef.current !== null) {
+      window.clearTimeout(progressSaveTimerRef.current);
+      progressSaveTimerRef.current = null;
+    }
+
+    if (settingsSaveTimerRef.current !== null) {
+      window.clearTimeout(settingsSaveTimerRef.current);
+      settingsSaveTimerRef.current = null;
+    }
+
+    const progressRows = toProgressUpserts(userId, progressMapRef.current);
+    const settingsRow = toSettingsUpsert(userId, dailyGoalRef.current);
+
+    setSyncStatus("saving");
+    try {
+      const [progressResponse, settingsResponse] = await Promise.all([
+        progressRows.length > 0
+          ? client.from("user_progress").upsert(progressRows, { onConflict: "user_id,word_id" })
+          : Promise.resolve({ error: null }),
+        client.from("user_settings").upsert(settingsRow, { onConflict: "user_id" })
+      ]);
+
+      if (progressResponse.error) {
+        setSyncStatus("error");
+        setSyncError(progressResponse.error.message);
+        return;
+      }
+
+      if (settingsResponse.error) {
+        setSyncStatus("error");
+        setSyncError(settingsResponse.error.message);
+        return;
+      }
+
+      setSyncError(null);
+      setSyncStatus("synced");
+    } finally {
+      flushSyncInFlightRef.current = false;
+    }
+  };
+
+  const scheduleSyncFlush = (kind: "progress" | "settings"): void => {
+    if (progressSaveTimerRef.current !== null || settingsSaveTimerRef.current !== null) return;
+
+    const timerRef = kind === "progress" ? progressSaveTimerRef : settingsSaveTimerRef;
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      void flushSyncNow();
+    }, SYNC_DEBOUNCE_MS);
+  };
 
   useEffect(() => {
     const client = supabase;
@@ -606,8 +685,8 @@ export default function App() {
 
       const serverRows = (progressResponse.data ?? []) as UserProgressRow[];
       const serverProgress = toProgressMapFromRows(serverRows);
-      const localProgress = safeReadProgress();
-      const localDailyGoal = safeReadDailyGoal();
+      const localProgress = progressMapRef.current;
+      const localDailyGoal = dailyGoalRef.current;
 
       let nextProgress = mergeProgressMaps(localProgress, serverProgress);
       let nextDailyGoal =
@@ -670,36 +749,7 @@ export default function App() {
       return;
     }
 
-    if (progressSaveTimerRef.current !== null) {
-      window.clearTimeout(progressSaveTimerRef.current);
-    }
-
-    progressSaveTimerRef.current = window.setTimeout(async () => {
-      const rows = toProgressUpserts(userId, progressMap);
-      if (rows.length === 0) {
-        setSyncStatus("synced");
-        return;
-      }
-
-      setSyncStatus("saving");
-      const { error } = await client.from("user_progress").upsert(rows, { onConflict: "user_id,word_id" });
-
-      if (error) {
-        setSyncStatus("error");
-        setSyncError(error.message);
-        return;
-      }
-
-      setSyncError(null);
-      setSyncStatus("synced");
-    }, SYNC_DEBOUNCE_MS);
-
-    return () => {
-      if (progressSaveTimerRef.current !== null) {
-        window.clearTimeout(progressSaveTimerRef.current);
-        progressSaveTimerRef.current = null;
-      }
-    };
+    scheduleSyncFlush("progress");
   }, [hasHydratedServer, progressMap, session?.user.id]);
 
   useEffect(() => {
@@ -714,33 +764,30 @@ export default function App() {
       return;
     }
 
-    if (settingsSaveTimerRef.current !== null) {
-      window.clearTimeout(settingsSaveTimerRef.current);
-    }
+    scheduleSyncFlush("settings");
+  }, [dailyGoal, hasHydratedServer, session?.user.id]);
 
-    settingsSaveTimerRef.current = window.setTimeout(async () => {
-      setSyncStatus("saving");
-      const { error } = await client.from("user_settings").upsert(toSettingsUpsert(userId, dailyGoal), {
-        onConflict: "user_id"
-      });
+  useEffect(() => {
+    if (!supabase) return;
 
-      if (error) {
-        setSyncStatus("error");
-        setSyncError(error.message);
-        return;
-      }
-
-      setSyncError(null);
-      setSyncStatus("synced");
-    }, SYNC_DEBOUNCE_MS);
-
-    return () => {
-      if (settingsSaveTimerRef.current !== null) {
-        window.clearTimeout(settingsSaveTimerRef.current);
-        settingsSaveTimerRef.current = null;
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") {
+        void flushSyncNow();
       }
     };
-  }, [dailyGoal, hasHydratedServer, session?.user.id]);
+
+    const handlePageHide = (): void => {
+      void flushSyncNow();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, []);
 
   const markWord = (
     word: VocabularyWord,
@@ -759,7 +806,7 @@ export default function App() {
         updatedAt: null
       };
 
-      return {
+      const next = {
         ...current,
         [word.id]: {
           seen: prev.seen + 1,
@@ -771,6 +818,9 @@ export default function App() {
           updatedAt
         }
       };
+
+      progressMapRef.current = next;
+      return next;
     });
   };
 
@@ -1213,7 +1263,9 @@ export default function App() {
                   onChange={(event) => {
                     const parsed = Number(event.target.value);
                     if (Number.isFinite(parsed) && parsed > 0) {
-                      setDailyGoal(Math.round(parsed));
+                      const nextGoal = Math.round(parsed);
+                      dailyGoalRef.current = nextGoal;
+                      setDailyGoal(nextGoal);
                     }
                   }}
                 />
@@ -1505,7 +1557,9 @@ export default function App() {
                   onChange={(event) => {
                     const parsed = Number(event.target.value);
                     if (Number.isFinite(parsed) && parsed > 0) {
-                      setDailyGoal(Math.round(parsed));
+                      const nextGoal = Math.round(parsed);
+                      dailyGoalRef.current = nextGoal;
+                      setDailyGoal(nextGoal);
                     }
                   }}
                 />
@@ -1542,6 +1596,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
