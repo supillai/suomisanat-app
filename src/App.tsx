@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { words } from "./data/words";
 import { hasSupabaseConfig, supabase } from "./lib/supabase";
@@ -9,6 +10,12 @@ type StudyFilter = "all" | "unknown" | "known" | "practice";
 type QuizMode = "mcq" | "typing";
 type StudyDecision = "none" | "known" | "practice";
 type SyncStatus = "idle" | "loading" | "saving" | "synced" | "error";
+
+type SyncConflict = {
+  mode: "import" | "conflict";
+  serverProgress: ProgressMap;
+  serverDailyGoal: number;
+};
 
 type UserProgressRow = {
   word_id: number;
@@ -47,6 +54,12 @@ const PROGRESS_KEY = "suomisanat-progress-v1";
 const DAILY_GOAL_KEY = "suomisanat-daily-goal-v1";
 const DEFAULT_DAILY_GOAL = 20;
 const SYNC_DEBOUNCE_MS = 900;
+const TAB_CONFIG: Array<{ id: Tab; label: string }> = [
+  { id: "study", label: "Study" },
+  { id: "quiz", label: "Quiz" },
+  { id: "list", label: "Word List" },
+  { id: "progress", label: "Progress" }
+];
 
 const TOPICS: WordTopic[] = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"];
 const POS_OPTIONS: WordPos[] = ["noun", "verb", "adjective", "adverb", "pronoun", "other"];
@@ -267,6 +280,36 @@ const toSettingsUpsert = (userId: string, goal: number): UserSettingsUpsert => (
   updated_at: new Date().toISOString()
 });
 
+const hasTrackedProgress = (map: ProgressMap): boolean => Object.keys(map).length > 0;
+
+const summarizeProgress = (map: ProgressMap, dailyGoal: number) => {
+  const states = Object.values(map);
+  return {
+    trackedWords: states.length,
+    known: states.filter((state) => state.known).length,
+    needsPractice: states.filter((state) => state.needsPractice).length,
+    reviewedToday: states.filter((state) => state.lastReviewed === todayIso()).length,
+    dailyGoal
+  };
+};
+
+const formatSyncTimestamp = (value: string | null): string => {
+  if (!value) return "Not synced yet";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Not synced yet";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(parsed);
+};
+
+const tabButtonId = (tab: Tab): string => `tab-${tab}`;
+const tabPanelId = (tab: Tab): string => `panel-${tab}`;
+
 const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
   const distractors = Array.from(
     new Set(words.filter((word) => word.id !== correctWord.id).map((word) => word.en))
@@ -280,23 +323,23 @@ const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
 const studyExample = (word: VocabularyWord): string => {
   if (word.pos === "verb") {
     if (word.fi === "olla") {
-      return "Esimerkki: MinÃ¤ haluan olla ajoissa.";
+      return "Esimerkki: MinÃƒÂ¤ haluan olla ajoissa.";
     }
-    return `Esimerkki: MinÃ¤ yritÃ¤n ${word.fi} tÃ¤nÃ¤Ã¤n.`;
+    return `Esimerkki: MinÃƒÂ¤ yritÃƒÂ¤n ${word.fi} tÃƒÂ¤nÃƒÂ¤ÃƒÂ¤n.`;
   }
   if (word.pos === "noun") {
-    return `Esimerkki: TÃ¤mÃ¤ on ${word.fi}.`;
+    return `Esimerkki: TÃƒÂ¤mÃƒÂ¤ on ${word.fi}.`;
   }
   if (word.pos === "adjective") {
-    return `Esimerkki: TÃ¤mÃ¤ tehtÃ¤vÃ¤ on ${word.fi}.`;
+    return `Esimerkki: TÃƒÂ¤mÃƒÂ¤ tehtÃƒÂ¤vÃƒÂ¤ on ${word.fi}.`;
   }
   if (word.pos === "adverb") {
-    return `Esimerkki: HÃ¤n puhuu ${word.fi}.`;
+    return `Esimerkki: HÃƒÂ¤n puhuu ${word.fi}.`;
   }
   if (word.pos === "pronoun") {
     return `Esimerkki: Sana "${word.fi}" auttaa keskustelussa.`;
   }
-  return `Esimerkki: KÃ¤ytÃ¤n sanaa "${word.fi}" arjessa.`;
+  return `Esimerkki: KÃƒÂ¤ytÃƒÂ¤n sanaa "${word.fi}" arjessa.`;
 };
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -501,6 +544,8 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig ? "loading" : "idle");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasHydratedServer, setHasHydratedServer] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncConflict, setSyncConflict] = useState<SyncConflict | null>(null);
 
   const progressSaveTimerRef = useRef<number | null>(null);
   const settingsSaveTimerRef = useRef<number | null>(null);
@@ -511,6 +556,19 @@ export default function App() {
   const sessionRef = useRef<Session | null>(session);
   const hasHydratedServerRef = useRef<boolean>(hasHydratedServer);
   const flushSyncInFlightRef = useRef(false);
+  const syncConflictRef = useRef<SyncConflict | null>(syncConflict);
+  const tabButtonRefs = useRef<Record<Tab, HTMLButtonElement | null>>({
+    study: null,
+    quiz: null,
+    list: null,
+    progress: null
+  });
+  const studyRevealButtonRef = useRef<HTMLButtonElement | null>(null);
+  const studyKnownButtonRef = useRef<HTMLButtonElement | null>(null);
+  const studyNextButtonRef = useRef<HTMLButtonElement | null>(null);
+  const quizFirstOptionRef = useRef<HTMLButtonElement | null>(null);
+  const quizTypingInputRef = useRef<HTMLInputElement | null>(null);
+  const quizNextButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -547,10 +605,32 @@ export default function App() {
     hasHydratedServerRef.current = hasHydratedServer;
   }, [hasHydratedServer]);
 
+  useEffect(() => {
+    syncConflictRef.current = syncConflict;
+  }, [syncConflict]);
+
+  useEffect(() => {
+    if (syncConflict) {
+      setShowCloudSync(true);
+    }
+  }, [syncConflict]);
+
+  const applyHydratedState = (nextProgress: ProgressMap, nextDailyGoal: number): void => {
+    skipNextProgressSyncRef.current = true;
+    skipNextSettingsSyncRef.current = true;
+    progressMapRef.current = nextProgress;
+    dailyGoalRef.current = nextDailyGoal;
+    setProgressMap(nextProgress);
+    setDailyGoal(nextDailyGoal);
+    setHasHydratedServer(true);
+    setLastSyncedAt(new Date().toISOString());
+    setSyncStatus("synced");
+  };
+
   const flushSyncNow = async (): Promise<void> => {
     const client = supabase;
     const userId = sessionRef.current?.user.id;
-    if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current) return;
+    if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current || syncConflictRef.current) return;
 
     flushSyncInFlightRef.current = true;
 
@@ -590,6 +670,7 @@ export default function App() {
 
       setSyncError(null);
       setSyncStatus("synced");
+      setLastSyncedAt(new Date().toISOString());
     } finally {
       flushSyncInFlightRef.current = false;
     }
@@ -603,6 +684,44 @@ export default function App() {
       timerRef.current = null;
       void flushSyncNow();
     }, SYNC_DEBOUNCE_MS);
+  };
+
+  const resolveSyncConflict = async (choice: "local" | "cloud"): Promise<void> => {
+    const client = supabase;
+    const userId = session?.user.id;
+    if (!client || !userId || !syncConflict) return;
+
+    const nextProgress =
+      choice === "local" ? mergeProgressMaps(progressMapRef.current, syncConflict.serverProgress) : syncConflict.serverProgress;
+    const nextDailyGoal = choice === "local" ? dailyGoalRef.current : syncConflict.serverDailyGoal;
+
+    setSyncStatus("saving");
+    setSyncError(null);
+
+    if (choice === "local") {
+      const progressRows = toProgressUpserts(userId, nextProgress);
+      const [progressResponse, settingsResponse] = await Promise.all([
+        progressRows.length > 0
+          ? client.from("user_progress").upsert(progressRows, { onConflict: "user_id,word_id" })
+          : Promise.resolve({ error: null }),
+        client.from("user_settings").upsert(toSettingsUpsert(userId, nextDailyGoal), { onConflict: "user_id" })
+      ]);
+
+      if (progressResponse.error) {
+        setSyncStatus("error");
+        setSyncError(progressResponse.error.message);
+        return;
+      }
+
+      if (settingsResponse.error) {
+        setSyncStatus("error");
+        setSyncError(settingsResponse.error.message);
+        return;
+      }
+    }
+
+    setSyncConflict(null);
+    applyHydratedState(nextProgress, nextDailyGoal);
   };
 
   useEffect(() => {
@@ -632,6 +751,7 @@ export default function App() {
     } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setSyncError(null);
+      setSyncConflict(null);
       setSyncStatus(nextSession ? "loading" : "idle");
       setHasHydratedServer(false);
     });
@@ -649,6 +769,7 @@ export default function App() {
     const userId = session?.user.id;
     if (!userId) {
       setHasHydratedServer(false);
+      setSyncConflict(null);
       setSyncStatus("idle");
       return;
     }
@@ -687,47 +808,40 @@ export default function App() {
       const serverProgress = toProgressMapFromRows(serverRows);
       const localProgress = progressMapRef.current;
       const localDailyGoal = dailyGoalRef.current;
+      const hasServerGoal =
+        Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0;
+      const serverDailyGoal = hasServerGoal ? Math.round(Number(settingsResponse.data?.daily_goal)) : DEFAULT_DAILY_GOAL;
+      const hasServerData = hasTrackedProgress(serverProgress) || hasServerGoal;
+      const hasLocalData = hasTrackedProgress(localProgress) || localDailyGoal !== DEFAULT_DAILY_GOAL;
+      const progressDiffers = !progressMapsEqual(localProgress, serverProgress);
+      const goalDiffers = localDailyGoal !== serverDailyGoal;
 
-      let nextProgress = mergeProgressMaps(localProgress, serverProgress);
-      let nextDailyGoal =
-        Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0
-          ? Math.round(Number(settingsResponse.data?.daily_goal))
-          : localDailyGoal;
-
-      if (Object.keys(nextProgress).length > 0 && !progressMapsEqual(nextProgress, serverProgress)) {
-        const { error } = await client
-          .from("user_progress")
-          .upsert(toProgressUpserts(userId, nextProgress), { onConflict: "user_id,word_id" });
-
-        if (cancelled) return;
-        if (error) {
-          setSyncStatus("error");
-          setSyncError(`Progress reconciliation failed: ${error.message}`);
-          setHasHydratedServer(false);
-          return;
-        }
-      }
-
-      if (!settingsResponse.data) {
-        const { error } = await client.from("user_settings").upsert(toSettingsUpsert(userId, localDailyGoal), {
-          onConflict: "user_id"
+      if (hasLocalData && hasServerData && (progressDiffers || goalDiffers)) {
+        setSyncConflict({
+          mode: "conflict",
+          serverProgress,
+          serverDailyGoal
         });
-
-        if (cancelled) return;
-        if (error) {
-          setSyncStatus("error");
-          setSyncError(`Daily goal migration failed: ${error.message}`);
-          setHasHydratedServer(false);
-          return;
-        }
+        setHasHydratedServer(false);
+        setSyncStatus("idle");
+        return;
       }
 
-      skipNextProgressSyncRef.current = true;
-      skipNextSettingsSyncRef.current = true;
-      setProgressMap(nextProgress);
-      setDailyGoal(nextDailyGoal);
-      setHasHydratedServer(true);
-      setSyncStatus("synced");
+      if (hasLocalData && !hasServerData) {
+        setSyncConflict({
+          mode: "import",
+          serverProgress,
+          serverDailyGoal
+        });
+        setHasHydratedServer(false);
+        setSyncStatus("idle");
+        return;
+      }
+
+      setSyncConflict(null);
+      const nextProgress = hasTrackedProgress(serverProgress) ? serverProgress : localProgress;
+      const nextDailyGoal = hasServerGoal ? serverDailyGoal : localDailyGoal;
+      applyHydratedState(nextProgress, nextDailyGoal);
     };
 
     void loadServerData();
@@ -788,6 +902,58 @@ export default function App() {
       window.removeEventListener("pagehide", handlePageHide);
     };
   }, []);
+
+  const selectTab = (nextTab: Tab): void => {
+    setTab(nextTab);
+  };
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number): void => {
+    let nextIndex = currentIndex;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % TAB_CONFIG.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + TAB_CONFIG.length) % TAB_CONFIG.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = TAB_CONFIG.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextTab = TAB_CONFIG[nextIndex].id;
+    selectTab(nextTab);
+    tabButtonRefs.current[nextTab]?.focus();
+  };
+
+  const setWordStatus = (word: VocabularyWord, status: "known" | "practice" | "clear"): void => {
+    setProgressMap((current) => {
+      const prev = current[word.id] ?? {
+        seen: 0,
+        correct: 0,
+        wrong: 0,
+        known: false,
+        needsPractice: false,
+        lastReviewed: null,
+        updatedAt: null
+      };
+
+      const next = {
+        ...current,
+        [word.id]: {
+          ...prev,
+          known: status === "known",
+          needsPractice: status === "practice",
+          updatedAt: new Date().toISOString()
+        }
+      };
+
+      progressMapRef.current = next;
+      return next;
+    });
+  };
 
   const markWord = (
     word: VocabularyWord,
@@ -902,6 +1068,11 @@ export default function App() {
   const totalWrong = words.reduce((sum, word) => sum + (progressMap[word.id]?.wrong ?? 0), 0);
   const accuracy = totalCorrect + totalWrong > 0 ? Math.round((totalCorrect / (totalCorrect + totalWrong)) * 100) : 0;
   const goalPct = Math.min(100, Math.round((reviewedToday / dailyGoal) * 100));
+  const localSyncSummary = useMemo(() => summarizeProgress(progressMap, dailyGoal), [progressMap, dailyGoal]);
+  const cloudSyncSummary = useMemo(
+    () => (syncConflict ? summarizeProgress(syncConflict.serverProgress, syncConflict.serverDailyGoal) : null),
+    [syncConflict]
+  );
 
   const nextStudyWord = (): void => {
     const pool = studyPool.length > 0 ? studyPool : words;
@@ -1043,25 +1214,134 @@ export default function App() {
     if (error) {
       setAuthMessage(`Sign out failed: ${error.message}`);
     } else {
+      setSyncConflict(null);
       setAuthMessage("Signed out.");
     }
 
     setAuthBusy(false);
   };
 
+  const syncBadgeLabel = !hasSupabaseConfig
+    ? "Local only"
+    : syncConflict
+      ? "Action needed"
+      : !session
+        ? "Signed out"
+        : syncStatus === "loading"
+          ? "Loading"
+          : syncStatus === "saving"
+            ? "Saving"
+            : syncStatus === "synced"
+              ? "Up to date"
+              : syncStatus === "error"
+                ? "Error"
+                : "Idle";
+  const syncBadgeClass = !hasSupabaseConfig
+    ? "border-slate-300 bg-slate-100 text-slate-700"
+    : syncConflict
+      ? "border-amber-300 bg-amber-50 text-amber-900"
+      : syncStatus === "error"
+        ? "border-rose-300 bg-rose-50 text-rose-800"
+        : syncStatus === "saving"
+          ? "border-sky-300 bg-sky-50 text-sky-800"
+          : "border-emerald-300 bg-emerald-50 text-emerald-800";
   const syncMessage = !hasSupabaseConfig
     ? "Cloud sync is disabled. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY."
-    : !session
-      ? "Signed out. Progress is saved locally in this browser."
-      : syncStatus === "loading"
-        ? "Sync status: loading from cloud..."
-        : syncStatus === "saving"
-          ? "Sync status: saving..."
-          : syncStatus === "synced"
-            ? "Sync status: up to date."
-            : syncStatus === "error"
-              ? "Sync status: error."
-              : "Sync status: idle.";
+    : syncConflict?.mode === "import"
+      ? "Browser progress exists on this device and cloud storage is empty. Choose whether to import it."
+      : syncConflict
+        ? "Browser progress differs from cloud data. Choose which source to keep for this account."
+        : !session
+          ? "Signed out. Progress is saved locally in this browser."
+          : syncStatus === "loading"
+            ? "Loading progress from cloud."
+            : syncStatus === "saving"
+              ? "Saving latest progress to cloud."
+              : syncStatus === "synced"
+                ? "Cloud sync is up to date."
+                : syncStatus === "error"
+                  ? "Cloud sync needs attention."
+                  : "Signed in and ready to sync.";
+  const lastSyncedLabel = session ? formatSyncTimestamp(lastSyncedAt) : "Local browser only";
+  const canManualSync = Boolean(
+    session && hasHydratedServer && !syncConflict && syncStatus !== "loading" && syncStatus !== "saving" && !authBusy
+  );
+
+  useEffect(() => {
+    if (tab !== "study") return;
+
+    const target = !reveal
+      ? studyRevealButtonRef.current
+      : studyDecision === "none"
+        ? studyKnownButtonRef.current
+        : studyNextButtonRef.current;
+    if (!target) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      target.focus();
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [reveal, studyDecision, studyWord.id, tab]);
+
+  useEffect(() => {
+    if (tab !== "quiz") return;
+
+    const target = quizFeedback
+      ? quizNextButtonRef.current
+      : quizMode === "typing"
+        ? quizTypingInputRef.current
+        : quizFirstOptionRef.current;
+    if (!target) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      target.focus();
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [quizFeedback, quizMode, quizWord.id, tab]);
+
+  const renderWordStatusActions = (word: VocabularyWord, compact = false) => {
+    const known = progressMap[word.id]?.known ?? false;
+    const needsPractice = progressMap[word.id]?.needsPractice ?? false;
+    const baseClass = compact
+      ? "rounded-lg px-3 py-2 text-xs font-semibold"
+      : "rounded-md px-2.5 py-1.5 text-xs font-semibold";
+
+    return (
+      <div className={`flex flex-wrap gap-2 ${compact ? "mt-3" : ""}`}>
+        <button
+          type="button"
+          className={`${baseClass} ${
+            known ? "bg-emerald-600 text-white" : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+          }`}
+          onClick={() => setWordStatus(word, "known")}
+          aria-pressed={known}
+        >
+          Known
+        </button>
+        <button
+          type="button"
+          className={`${baseClass} ${
+            needsPractice ? "bg-amber-500 text-white" : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+          }`}
+          onClick={() => setWordStatus(word, "practice")}
+          aria-pressed={needsPractice}
+        >
+          Needs Practice
+        </button>
+        {(known || needsPractice) && (
+          <button
+            type="button"
+            className={`${baseClass} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}
+            onClick={() => setWordStatus(word, "clear")}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -1075,15 +1355,6 @@ export default function App() {
                 <div className="sun-gradient inline-flex rounded-2xl px-3 py-2 text-xs font-semibold text-ink">
                   Known: {knownCount}/{totalWords}
                 </div>
-                <button
-                  type="button"
-                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
-                  onClick={() => setShowCloudSync((current) => !current)}
-                  aria-expanded={showCloudSync}
-                  aria-controls="cloud-sync-panel"
-                >
-                  Cloud Sync {showCloudSync ? "^" : "v"}
-                </button>
               </div>
             </div>
 
@@ -1091,30 +1362,131 @@ export default function App() {
               {totalWords} Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
             </p>
 
-            {showCloudSync && (
-              <div id="cloud-sync-panel" className="rounded-2xl border border-slate-200 bg-white p-2.5">
-                <div className="flex flex-col gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
+                      {syncBadgeLabel}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      onClick={() => setShowCloudSync((current) => !current)}
+                      aria-expanded={showCloudSync || Boolean(syncConflict)}
+                      aria-controls="cloud-sync-panel"
+                    >
+                      {showCloudSync || syncConflict ? "Hide Sync Details" : "Manage Sync"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-700" role="status" aria-live="polite">
+                    {syncMessage}
+                  </p>
+                  <p className="text-[11px] text-slate-600">Last synced: {lastSyncedLabel}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => {
+                      void flushSyncNow();
+                    }}
+                    disabled={!canManualSync}
+                  >
+                    Sync Now
+                  </button>
+                  {hasSupabaseConfig && session && (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                      onClick={() => {
+                        void signOut();
+                      }}
+                      disabled={authBusy}
+                    >
+                      Sign Out
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {syncError && (
+                <p className="mt-2 text-xs text-rose-700" role="status" aria-live="polite">
+                  {syncError}
+                </p>
+              )}
+            </div>
+
+            {(showCloudSync || syncConflict) && (
+              <div id="cloud-sync-panel" className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex flex-col gap-3">
+                  {syncConflict && cloudSyncSummary && (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-amber-950">
+                          {syncConflict.mode === "import" ? "Import browser data to cloud?" : "Browser and cloud data differ"}
+                        </p>
+                        <p className="text-xs text-amber-900">
+                          {syncConflict.mode === "import"
+                            ? "This browser has progress that is not in Supabase yet."
+                            : "Choose whether to import what is stored in this browser or replace it with the current cloud data."}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        <article className="rounded-xl border border-amber-200 bg-white/80 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">This Browser</p>
+                          <p className="mt-2 text-sm text-slate-800">
+                            {localSyncSummary.known} known, {localSyncSummary.needsPractice} practice, {localSyncSummary.reviewedToday} reviewed today
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            {localSyncSummary.trackedWords} tracked words, daily goal {localSyncSummary.dailyGoal}
+                          </p>
+                        </article>
+                        <article className="rounded-xl border border-amber-200 bg-white/80 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Cloud</p>
+                          <p className="mt-2 text-sm text-slate-800">
+                            {cloudSyncSummary.known} known, {cloudSyncSummary.needsPractice} practice, {cloudSyncSummary.reviewedToday} reviewed today
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            {cloudSyncSummary.trackedWords} tracked words, daily goal {cloudSyncSummary.dailyGoal}
+                          </p>
+                        </article>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => {
+                            void resolveSyncConflict("local");
+                          }}
+                          disabled={syncStatus === "saving"}
+                        >
+                          Import Browser Data
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => {
+                            void resolveSyncConflict("cloud");
+                          }}
+                          disabled={syncStatus === "saving"}
+                        >
+                          {syncConflict.mode === "import" ? "Start from Cloud" : "Use Cloud Data"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       {hasSupabaseConfig && session && (
-                        <p className="text-[11px] text-slate-600">
-                          Signed in as {session.user.email ?? "your account"}.
-                        </p>
+                        <p className="text-xs text-slate-600">Signed in as {session.user.email ?? "your account"}.</p>
                       )}
                       {!hasSupabaseConfig && <p className="text-xs text-slate-600">Running in local-only mode.</p>}
                     </div>
-
-                    {hasSupabaseConfig && session && (
-                      <button
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-                        onClick={() => {
-                          void signOut();
-                        }}
-                        disabled={authBusy}
-                      >
-                        Sign Out
-                      </button>
-                    )}
                   </div>
 
                   {hasSupabaseConfig && !session && (
@@ -1125,9 +1497,14 @@ export default function App() {
                         void sendMagicLink();
                       }}
                     >
+                      <label htmlFor="sync-email" className="sr-only">
+                        Email address for sign-in link
+                      </label>
                       <input
+                        id="sync-email"
                         type="email"
                         required
+                        autoComplete="email"
                         className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-accent focus:outline-none"
                         placeholder="you@example.com"
                         value={authEmail}
@@ -1143,62 +1520,52 @@ export default function App() {
                     </form>
                   )}
 
-                  <p className={`text-[11px] ${syncStatus === "error" ? "text-rose-700" : "text-slate-700"}`}>{syncMessage}</p>
-                  {syncError && <p className="text-[11px] text-rose-700">{syncError}</p>}
-                  {authMessage && <p className="text-[11px] text-slate-700">{authMessage}</p>}
+                  {authMessage && (
+                    <p className="text-xs text-slate-700" role="status" aria-live="polite">
+                      {authMessage}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
-          <nav className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
-            <button
-              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
-                tab === "study"
-                  ? "accent-gradient border-transparent text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-              }`}
-              onClick={() => setTab("study")}
-            >
-              Study
-            </button>
-            <button
-              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
-                tab === "quiz"
-                  ? "accent-gradient border-transparent text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-              }`}
-              onClick={() => setTab("quiz")}
-            >
-              Quiz
-            </button>
-            <button
-              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
-                tab === "list"
-                  ? "accent-gradient border-transparent text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-              }`}
-              onClick={() => setTab("list")}
-            >
-              Word List
-            </button>
-            <button
-              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
-                tab === "progress"
-                  ? "accent-gradient border-transparent text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-              }`}
-              onClick={() => setTab("progress")}
-            >
-              Progress
-            </button>
+          <nav className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
+            {TAB_CONFIG.map((item, index) => (
+              <button
+                key={item.id}
+                id={tabButtonId(item.id)}
+                ref={(node) => {
+                  tabButtonRefs.current[item.id] = node;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                aria-controls={tabPanelId(item.id)}
+                tabIndex={tab === item.id ? 0 : -1}
+                className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
+                  tab === item.id
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                }`}
+                onClick={() => selectTab(item.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+              >
+                {item.label}
+              </button>
+            ))}
           </nav>
 
         </header>
 
         {tab === "study" && (
-          <section className="glass card-shadow rounded-3xl p-4 md:p-6">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+          <section
+            id={tabPanelId("study")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("study")}
+            className="glass card-shadow rounded-3xl p-4 md:p-6"
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
               <span className="text-xs font-semibold text-slate-700">Study mode:</span>
               {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
                 <button
@@ -1303,7 +1670,11 @@ export default function App() {
 
             {!reveal && (
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                <button className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white" onClick={revealStudyWord}>
+                <button
+                  ref={studyRevealButtonRef}
+                  className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white"
+                  onClick={revealStudyWord}
+                >
                   Reveal Meaning
                 </button>
                 <button
@@ -1324,7 +1695,11 @@ export default function App() {
 
             {reveal && studyDecision === "none" && (
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <button className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyKnown}>
+                <button
+                  ref={studyKnownButtonRef}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
+                  onClick={markStudyKnown}
+                >
                   Mark Known
                 </button>
                 <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyPractice}>
@@ -1341,10 +1716,14 @@ export default function App() {
 
             {reveal && studyDecision !== "none" && (
               <div className="mt-5">
-                <p className="mb-3 text-sm font-semibold text-slate-800">
+                <p className="mb-3 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
                   {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
                 </p>
-                <button className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto" onClick={nextStudyWord}>
+                <button
+                  ref={studyNextButtonRef}
+                  className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto"
+                  onClick={nextStudyWord}
+                >
                   Next Card
                 </button>
               </div>
@@ -1353,8 +1732,13 @@ export default function App() {
         )}
 
         {tab === "quiz" && (
-          <section className="glass card-shadow rounded-3xl p-5 md:p-8">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
+          <section
+            id={tabPanelId("quiz")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("quiz")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
+            <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
               <span className="text-sm font-semibold text-slate-700">Quiz mode:</span>
               <button
                 className={`rounded-lg border px-3 py-1 text-sm ${
@@ -1395,6 +1779,7 @@ export default function App() {
                     {quizOptions.map((option) => (
                       <button
                         key={`${quizWord.id}-${option}`}
+                        ref={option === quizOptions[0] ? quizFirstOptionRef : null}
                         className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
                         onClick={() => answerMcq(option)}
                       >
@@ -1409,9 +1794,18 @@ export default function App() {
                 <>
                   <p className="text-sm text-slate-600">Type the Finnish word:</p>
                   <h2 className="mt-2 text-2xl font-bold text-ink">{quizWord.en}</h2>
+                  <label htmlFor="quiz-typing-input" className="sr-only">
+                    Type the Finnish word for {quizWord.en}
+                  </label>
                   <input
+                    id="quiz-typing-input"
+                    ref={quizTypingInputRef}
                     className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-none"
                     placeholder="Write Finnish word"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={typingValue}
                     onChange={(event) => setTypingValue(event.target.value)}
                     onKeyDown={(event) => {
@@ -1426,10 +1820,15 @@ export default function App() {
                 </>
               )}
 
-              {quizFeedback && <p className="mt-4 text-sm font-semibold text-slate-800">{quizFeedback}</p>}
+              {quizFeedback && (
+                <p className="mt-4 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
+                  {quizFeedback}
+                </p>
+              )}
             </div>
 
             <button
+              ref={quizNextButtonRef}
               className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
               onClick={nextQuiz}
             >
@@ -1447,15 +1846,29 @@ export default function App() {
         )}
 
         {tab === "list" && (
-          <section className="glass card-shadow rounded-3xl p-5 md:p-8">
+          <section
+            id={tabPanelId("list")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("list")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
             <div className="grid gap-3 md:grid-cols-4">
+              <label htmlFor="word-search" className="sr-only">
+                Search words
+              </label>
               <input
+                id="word-search"
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none md:col-span-2"
                 placeholder="Search Finnish, English, or explanation"
+                autoComplete="off"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
               />
+              <label htmlFor="topic-filter" className="sr-only">
+                Filter by topic
+              </label>
               <select
+                id="topic-filter"
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
                 value={topicFilter}
                 onChange={(event) => setTopicFilter(event.target.value as WordTopic | "all")}
@@ -1467,7 +1880,11 @@ export default function App() {
                   </option>
                 ))}
               </select>
+              <label htmlFor="pos-filter" className="sr-only">
+                Filter by part of speech
+              </label>
               <select
+                id="pos-filter"
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
                 value={posFilter}
                 onChange={(event) => setPosFilter(event.target.value as WordPos | "all")}
@@ -1483,8 +1900,27 @@ export default function App() {
 
             <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of {totalWords} words</p>
 
-            <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white">
-              <table className="w-full min-w-[700px] text-left text-sm">
+            <div className="mt-4 space-y-3 md:hidden">
+              {filteredWords.map((word) => (
+                <article key={`mobile-word-${word.id}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-ink">{word.fi}</h3>
+                      <p className="text-sm font-semibold text-accent">{word.en}</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      {word.topic}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-700">{word.fiSimple}</p>
+                  <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">{word.pos}</p>
+                  {renderWordStatusActions(word, true)}
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-4 hidden max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white md:block">
+              <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
                   <tr>
                     <th className="px-3 py-2">Finnish</th>
@@ -1493,17 +1929,19 @@ export default function App() {
                     <th className="px-3 py-2">Topic</th>
                     <th className="px-3 py-2">Known</th>
                     <th className="px-3 py-2">Needs Practice</th>
+                    <th className="px-3 py-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredWords.map((word) => (
-                    <tr key={word.id} className="border-t border-slate-200">
+                    <tr key={word.id} className="border-t border-slate-200 align-top">
                       <td className="px-3 py-2 font-semibold text-ink">{word.fi}</td>
                       <td className="px-3 py-2 text-slate-800">{word.en}</td>
                       <td className="px-3 py-2 text-slate-700">{word.fiSimple}</td>
                       <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-600">{word.topic}</td>
                       <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.known ? "yes" : "no"}</td>
                       <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.needsPractice ? "yes" : "no"}</td>
+                      <td className="px-3 py-2">{renderWordStatusActions(word)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1513,7 +1951,12 @@ export default function App() {
         )}
 
         {tab === "progress" && (
-          <section className="glass card-shadow rounded-3xl p-5 md:p-8">
+          <section
+            id={tabPanelId("progress")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("progress")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
             <div className="grid gap-4 md:grid-cols-4">
               <article className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Known Words</p>
@@ -1596,6 +2039,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
