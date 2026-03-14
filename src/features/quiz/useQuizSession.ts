@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useReducer } from "react";
 import type { ProgressMap, VocabularyWord } from "../../types";
 import { randomFrom } from "../../utils/collections";
 import type { QuizMode } from "../app/app.types";
@@ -20,6 +20,7 @@ type UseQuizSessionOptions = {
 export type QuizSession = {
   quizMode: QuizMode;
   setQuizMode: (mode: QuizMode) => void;
+  isAnswered: boolean;
   quizWord: VocabularyWord;
   quizOptions: string[];
   typingValue: string;
@@ -38,106 +39,200 @@ export type QuizSession = {
   answerTyping: () => void;
 };
 
+type QuizState = {
+  quizMode: QuizMode;
+  quizWordId: number;
+  quizOptions: string[];
+  typingValue: string;
+  quizFeedback: string;
+  quizCorrect: number;
+  quizWrong: number;
+  miniDrillQueue: number[];
+  miniDrillIndex: number;
+  isAnswered: boolean;
+};
+
+type QuizAction =
+  | { type: "set_quiz_mode"; mode: QuizMode }
+  | { type: "set_typing_value"; value: string }
+  | { type: "set_question"; wordId: number; options: string[] }
+  | { type: "start_mini_drill"; queue: number[]; wordId: number; options: string[] }
+  | { type: "advance_mini_drill"; index: number; wordId: number; options: string[] }
+  | { type: "stop_mini_drill" }
+  | { type: "answer"; isCorrect: boolean; feedback: string };
+
+const resetQuestionState = (state: QuizState, wordId: number, options: string[]): QuizState => ({
+  ...state,
+  quizWordId: wordId,
+  quizOptions: options,
+  typingValue: "",
+  quizFeedback: "",
+  isAnswered: false
+});
+
+const createInitialQuizState = (words: VocabularyWord[]): QuizState => {
+  const initialWord = words[0]!;
+
+  return {
+    quizMode: "mcq",
+    quizWordId: initialWord.id,
+    quizOptions: pickQuizOptions(initialWord, words),
+    typingValue: "",
+    quizFeedback: "",
+    quizCorrect: 0,
+    quizWrong: 0,
+    miniDrillQueue: [],
+    miniDrillIndex: 0,
+    isAnswered: false
+  };
+};
+
+const quizReducer = (state: QuizState, action: QuizAction): QuizState => {
+  switch (action.type) {
+    case "set_quiz_mode":
+      return {
+        ...state,
+        quizMode: action.mode
+      };
+    case "set_typing_value":
+      return {
+        ...state,
+        typingValue: action.value
+      };
+    case "set_question":
+      return resetQuestionState(state, action.wordId, action.options);
+    case "start_mini_drill":
+      return {
+        ...resetQuestionState(state, action.wordId, action.options),
+        miniDrillQueue: action.queue,
+        miniDrillIndex: 0
+      };
+    case "advance_mini_drill":
+      return {
+        ...resetQuestionState(state, action.wordId, action.options),
+        miniDrillIndex: action.index
+      };
+    case "stop_mini_drill":
+      return {
+        ...state,
+        miniDrillQueue: [],
+        miniDrillIndex: 0
+      };
+    case "answer":
+      if (state.isAnswered) {
+        return state;
+      }
+
+      return {
+        ...state,
+        quizFeedback: action.feedback,
+        quizCorrect: state.quizCorrect + (action.isCorrect ? 1 : 0),
+        quizWrong: state.quizWrong + (action.isCorrect ? 0 : 1),
+        isAnswered: true
+      };
+    default:
+      return state;
+  }
+};
+
 export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionOptions): QuizSession => {
-  const initialWord = words[1] ?? words[0];
-  const [quizMode, setQuizMode] = useState<QuizMode>("mcq");
-  const [quizWord, setQuizWord] = useState<VocabularyWord>(() => initialWord);
-  const [quizOptions, setQuizOptions] = useState<string[]>(() => pickQuizOptions(initialWord, words));
-  const [typingValue, setTypingValue] = useState("");
-  const [quizFeedback, setQuizFeedback] = useState("");
-  const [quizCorrect, setQuizCorrect] = useState(0);
-  const [quizWrong, setQuizWrong] = useState(0);
-  const [miniDrillQueue, setMiniDrillQueue] = useState<number[]>([]);
-  const [miniDrillIndex, setMiniDrillIndex] = useState(0);
+  const [state, dispatch] = useReducer(quizReducer, words, createInitialQuizState);
+  const wordsById = useMemo(() => new Map(words.map((word) => [word.id, word] as const)), [words]);
+  const quizWord = wordsById.get(state.quizWordId) ?? words[0]!;
 
   const miniDrillRecommendations = useMemo(() => buildMiniDrillRecommendations(words, progressMap), [progressMap, words]);
-  const miniDrillActive = miniDrillQueue.length > 0;
-  const miniDrillProgress = miniDrillActive ? `${Math.min(miniDrillIndex + 1, miniDrillQueue.length)}/${miniDrillQueue.length}` : "";
-  const miniDrillLastQuestion = miniDrillActive && miniDrillIndex >= miniDrillQueue.length - 1;
+  const miniDrillActive = state.miniDrillQueue.length > 0;
+  const miniDrillProgress = miniDrillActive
+    ? `${Math.min(state.miniDrillIndex + 1, state.miniDrillQueue.length)}/${state.miniDrillQueue.length}`
+    : "";
+  const miniDrillLastQuestion = miniDrillActive && state.miniDrillIndex >= state.miniDrillQueue.length - 1;
 
-  const setQuizWordAndReset = (word: VocabularyWord): void => {
-    setQuizWord(word);
-    setQuizOptions(pickQuizOptions(word, words));
-    setTypingValue("");
-    setQuizFeedback("");
+  const setQuestion = (word: VocabularyWord): void => {
+    dispatch({
+      type: "set_question",
+      wordId: word.id,
+      options: pickQuizOptions(word, words)
+    });
   };
 
   const startMiniDrill = (): void => {
     const queue = miniDrillRecommendations.map((item) => item.word.id);
     if (queue.length === 0) return;
 
-    setMiniDrillQueue(queue);
-    setMiniDrillIndex(0);
-    const firstWord = words.find((word) => word.id === queue[0]) ?? words[0];
-    setQuizWordAndReset(firstWord);
+    const firstWord = wordsById.get(queue[0]) ?? words[0]!;
+    dispatch({
+      type: "start_mini_drill",
+      queue,
+      wordId: firstWord.id,
+      options: pickQuizOptions(firstWord, words)
+    });
   };
 
   const stopMiniDrill = (): void => {
-    setMiniDrillQueue([]);
-    setMiniDrillIndex(0);
+    dispatch({ type: "stop_mini_drill" });
   };
 
   const nextQuiz = (): void => {
-    if (miniDrillQueue.length > 0) {
-      const nextIndex = miniDrillIndex + 1;
-      if (nextIndex < miniDrillQueue.length) {
-        const nextWordId = miniDrillQueue[nextIndex];
-        const nextWord = words.find((word) => word.id === nextWordId);
+    if (state.miniDrillQueue.length > 0) {
+      const nextIndex = state.miniDrillIndex + 1;
+      if (nextIndex < state.miniDrillQueue.length) {
+        const nextWordId = state.miniDrillQueue[nextIndex];
+        const nextWord = wordsById.get(nextWordId);
 
         if (nextWord) {
-          setMiniDrillIndex(nextIndex);
-          setQuizWordAndReset(nextWord);
+          dispatch({
+            type: "advance_mini_drill",
+            index: nextIndex,
+            wordId: nextWord.id,
+            options: pickQuizOptions(nextWord, words)
+          });
           return;
         }
       }
 
-      setMiniDrillQueue([]);
-      setMiniDrillIndex(0);
+      dispatch({ type: "stop_mini_drill" });
     }
 
-    setQuizWordAndReset(randomFrom(words));
+    setQuestion(randomFrom(words));
   };
 
   const answerMcq = (option: string): void => {
+    if (state.isAnswered) return;
+
     const isCorrect = option === quizWord.en;
     markWord(quizWord, isCorrect);
 
-    if (isCorrect) {
-      setQuizCorrect((current) => current + 1);
-      setQuizFeedback("Correct.");
-      return;
-    }
-
-    setQuizWrong((current) => current + 1);
-    setQuizFeedback(`Incorrect. Correct answer: ${quizWord.en}`);
+    dispatch({
+      type: "answer",
+      isCorrect,
+      feedback: isCorrect ? "Correct." : `Incorrect. Correct answer: ${quizWord.en}`
+    });
   };
 
   const answerTyping = (): void => {
-    if (!typingValue.trim()) return;
+    if (state.isAnswered || !state.typingValue.trim()) return;
 
-    const isCorrect = normalizeFinnish(typingValue) === normalizeFinnish(quizWord.fi);
+    const isCorrect = normalizeFinnish(state.typingValue) === normalizeFinnish(quizWord.fi);
     markWord(quizWord, isCorrect);
 
-    if (isCorrect) {
-      setQuizCorrect((current) => current + 1);
-      setQuizFeedback("Correct.");
-      return;
-    }
-
-    setQuizWrong((current) => current + 1);
-    setQuizFeedback(buildTypingMistakeFeedback(typingValue, quizWord));
+    dispatch({
+      type: "answer",
+      isCorrect,
+      feedback: isCorrect ? "Correct." : buildTypingMistakeFeedback(state.typingValue, quizWord)
+    });
   };
 
   return {
-    quizMode,
-    setQuizMode,
+    quizMode: state.quizMode,
+    setQuizMode: (mode) => dispatch({ type: "set_quiz_mode", mode }),
+    isAnswered: state.isAnswered,
     quizWord,
-    quizOptions,
-    typingValue,
-    setTypingValue,
-    quizFeedback,
-    quizCorrect,
-    quizWrong,
+    quizOptions: state.quizOptions,
+    typingValue: state.typingValue,
+    setTypingValue: (value) => dispatch({ type: "set_typing_value", value }),
+    quizFeedback: state.quizFeedback,
+    quizCorrect: state.quizCorrect,
+    quizWrong: state.quizWrong,
     miniDrillRecommendations,
     miniDrillActive,
     miniDrillProgress,

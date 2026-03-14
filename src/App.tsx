@@ -89,6 +89,7 @@ export default function App() {
         {tab === "quiz" && (
           <QuizTab
             quizMode={quizSession.quizMode}
+            isAnswered={quizSession.isAnswered}
             quizWord={quizSession.quizWord}
             quizOptions={quizSession.quizOptions}
             typingValue={quizSession.typingValue}
@@ -140,6 +141,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

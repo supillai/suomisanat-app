@@ -31,13 +31,15 @@ export type StudySession = {
 };
 
 export const useStudySession = ({ words, progressMap, markWord }: UseStudySessionOptions): StudySession => {
+  const firstWord = words[0]!;
   const [studyFilter, setStudyFilter] = useState<StudyFilter>("all");
-  const [studyWord, setStudyWord] = useState<VocabularyWord>(() => words[0]);
+  const [studyWordId, setStudyWordId] = useState<number>(() => firstWord.id);
   const [reveal, setReveal] = useState(false);
   const [studyHintLevel, setStudyHintLevel] = useState(0);
   const [studyDecision, setStudyDecision] = useState<StudyDecision>("none");
   const [studyKnownSession, setStudyKnownSession] = useState(0);
   const [studyPracticeSession, setStudyPracticeSession] = useState(0);
+  const wordsById = useMemo(() => new Map(words.map((word) => [word.id, word] as const)), [words]);
 
   const studyPool = useMemo(() => {
     if (studyFilter === "all") return words;
@@ -52,25 +54,26 @@ export const useStudySession = ({ words, progressMap, markWord }: UseStudySessio
     });
   }, [progressMap, studyFilter, words]);
 
+  const studyWord = wordsById.get(studyWordId) ?? firstWord;
   const studyHints = useMemo(() => buildStudyHints(studyWord), [studyWord]);
 
   useEffect(() => {
-    if (!studyPool.some((word) => word.id === studyWord.id)) {
-      const fallbackWord = studyPool.length > 0 ? studyPool[0] : words[0];
-      setStudyWord(fallbackWord);
+    if (!studyPool.some((word) => word.id === studyWordId)) {
+      const fallbackWord = studyPool.length > 0 ? studyPool[0] : firstWord;
+      setStudyWordId(fallbackWord.id);
       setReveal(false);
       setStudyHintLevel(0);
       setStudyDecision("none");
     }
-  }, [studyPool, studyWord.id, words]);
+  }, [firstWord, studyPool, studyWordId]);
 
   useEffect(() => {
     setStudyHintLevel(0);
-  }, [studyWord.id]);
+  }, [studyWordId]);
 
   const nextStudyWord = (): void => {
     const pool = studyPool.length > 0 ? studyPool : words;
-    setStudyWord(randomFrom(pool));
+    setStudyWordId(randomFrom(pool).id);
     setReveal(false);
     setStudyHintLevel(0);
     setStudyDecision("none");

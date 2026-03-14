@@ -5,6 +5,7 @@ import type { VocabularyWord } from "../../types";
 
 type QuizTabProps = {
   quizMode: QuizMode;
+  isAnswered: boolean;
   quizWord: VocabularyWord;
   quizOptions: string[];
   typingValue: string;
@@ -24,6 +25,7 @@ type QuizTabProps = {
 
 export const QuizTab = ({
   quizMode,
+  isAnswered,
   quizWord,
   quizOptions,
   typingValue,
@@ -43,9 +45,16 @@ export const QuizTab = ({
   const quizFirstOptionRef = useRef<HTMLButtonElement | null>(null);
   const quizTypingInputRef = useRef<HTMLInputElement | null>(null);
   const quizNextButtonRef = useRef<HTMLButtonElement | null>(null);
+  const nextQuizLabel = miniDrillLastQuestion
+    ? isAnswered
+      ? "Finish Mini Drill"
+      : "Skip and Finish Mini Drill"
+    : isAnswered
+      ? "Next Question"
+      : "Skip Question";
 
   useEffect(() => {
-    const target = quizFeedback ? quizNextButtonRef.current : quizMode === "typing" ? quizTypingInputRef.current : quizFirstOptionRef.current;
+    const target = isAnswered ? quizNextButtonRef.current : quizMode === "typing" ? quizTypingInputRef.current : quizFirstOptionRef.current;
     if (!target) return;
 
     const rafId = window.requestAnimationFrame(() => {
@@ -53,7 +62,7 @@ export const QuizTab = ({
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [quizFeedback, quizMode, quizWord.id]);
+  }, [isAnswered, quizMode, quizWord.id]);
 
   return (
     <section
@@ -65,17 +74,23 @@ export const QuizTab = ({
       <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
         <span className="text-sm font-semibold text-slate-700">Quiz mode:</span>
         <button
-          className={`rounded-lg border px-3 py-1 text-sm ${
+          className={`rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
             quizMode === "mcq" ? "accent-gradient border-transparent text-white" : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
           }`}
+          type="button"
+          aria-pressed={quizMode === "mcq"}
+          disabled={isAnswered}
           onClick={() => onQuizModeChange("mcq")}
         >
           Multiple Choice
         </button>
         <button
-          className={`rounded-lg border px-3 py-1 text-sm ${
+          className={`rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
             quizMode === "typing" ? "accent-gradient border-transparent text-white" : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
           }`}
+          type="button"
+          aria-pressed={quizMode === "typing"}
+          disabled={isAnswered}
           onClick={() => onQuizModeChange("typing")}
         >
           Type Finnish
@@ -100,7 +115,9 @@ export const QuizTab = ({
                 <button
                   key={`${quizWord.id}-${option}`}
                   ref={option === quizOptions[0] ? quizFirstOptionRef : null}
-                  className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                  type="button"
+                  className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isAnswered}
                   onClick={() => onAnswerMcq(option)}
                 >
                   {option}
@@ -127,14 +144,21 @@ export const QuizTab = ({
               autoCapitalize="none"
               spellCheck={false}
               value={typingValue}
+              disabled={isAnswered}
               onChange={(event) => onTypingValueChange(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
+                  event.preventDefault();
                   onAnswerTyping();
                 }
               }}
             />
-            <button className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white" onClick={onAnswerTyping}>
+            <button
+              type="button"
+              className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isAnswered || !typingValue.trim()}
+              onClick={onAnswerTyping}
+            >
               Check
             </button>
           </>
@@ -149,13 +173,15 @@ export const QuizTab = ({
 
       <button
         ref={quizNextButtonRef}
+        type="button"
         className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
         onClick={onNextQuiz}
       >
-        {miniDrillLastQuestion ? "Finish Mini Drill" : "Next Question"}
+        {nextQuizLabel}
       </button>
       {miniDrillActive && (
         <button
+          type="button"
           className="ml-2 mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
           onClick={onStopMiniDrill}
         >
