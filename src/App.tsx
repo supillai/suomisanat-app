@@ -63,6 +63,31 @@ const TAB_CONFIG: Array<{ id: Tab; label: string }> = [
 
 const TOPICS: WordTopic[] = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"];
 const POS_OPTIONS: WordPos[] = ["noun", "verb", "adjective", "adverb", "pronoun", "other"];
+const TOPIC_LABELS: Record<WordTopic, string> = {
+  core: "Core",
+  time: "Time",
+  home: "Home",
+  food: "Food",
+  city: "City",
+  health: "Health",
+  work: "Work",
+  verbs: "Verbs",
+  describing: "Describing"
+};
+const POS_LABELS: Record<WordPos, string> = {
+  noun: "Noun",
+  verb: "Verb",
+  adjective: "Adjective",
+  adverb: "Adverb",
+  pronoun: "Pronoun",
+  other: "Phrase"
+};
+const STUDY_FILTER_LABELS: Record<StudyFilter, string> = {
+  all: "All Cards",
+  unknown: "Unknown",
+  known: "Known",
+  practice: "Needs Practice"
+};
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 
@@ -375,7 +400,7 @@ const buildStudyHints = (word: VocabularyWord): string[] => {
   const hints: string[] = [];
   const maskedExplanation = maskedSimpleExplanation(word);
 
-  hints.push(`Topic: ${word.topic}. Part of speech: ${word.pos}.`);
+  hints.push(`Topic: ${TOPIC_LABELS[word.topic]}. Word type: ${POS_LABELS[word.pos]}.`);
 
   if (maskedExplanation.trim()) {
     hints.push(`Easy Finnish clue: ${maskedExplanation}`);
@@ -916,6 +941,11 @@ export default function App() {
     setTab(nextTab);
   };
 
+  const openCloudSyncSettings = (): void => {
+    setShowCloudSync(true);
+    selectTab("progress");
+  };
+
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number): void => {
     let nextIndex = currentIndex;
 
@@ -1077,6 +1107,7 @@ export default function App() {
   const totalWrong = words.reduce((sum, word) => sum + (progressMap[word.id]?.wrong ?? 0), 0);
   const accuracy = totalCorrect + totalWrong > 0 ? Math.round((totalCorrect / (totalCorrect + totalWrong)) * 100) : 0;
   const goalPct = Math.min(100, Math.round((reviewedToday / dailyGoal) * 100));
+  const hasStudyActivity = reviewedToday > 0 || studyKnownSession > 0 || studyPracticeSession > 0;
   const localSyncSummary = useMemo(() => summarizeProgress(progressMap, dailyGoal), [progressMap, dailyGoal]);
   const cloudSyncSummary = useMemo(
     () => (syncConflict ? summarizeProgress(syncConflict.serverProgress, syncConflict.serverDailyGoal) : null),
@@ -1357,64 +1388,553 @@ export default function App() {
     <div className="min-h-screen p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
         <header className="glass card-shadow mb-4 rounded-3xl p-4 md:p-5">
-          <div className="flex flex-col gap-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="text-2xl font-extrabold tracking-tight text-ink md:text-3xl">SuomiSanat</h1>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-1.5">
+                <h1 className="text-2xl font-extrabold tracking-tight text-ink md:text-3xl">SuomiSanat</h1>
+                <p className="max-w-2xl text-xs text-slate-700 md:text-sm">
+                  {totalWords} Finnish must-have words for YKI intermediate (grade 3), with English meaning and an easy Finnish clue.
+                </p>
+              </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={`inline-flex items-center rounded-2xl border px-3 py-2 text-xs font-semibold ${syncBadgeClass}`}
+                  onClick={openCloudSyncSettings}
+                >
+                  Sync: {syncBadgeLabel}
+                </button>
                 <div className="sun-gradient inline-flex rounded-2xl px-3 py-2 text-xs font-semibold text-ink">
                   Known: {knownCount}/{totalWords}
                 </div>
               </div>
             </div>
+          </div>
 
-            <p className="max-w-xl text-xs text-slate-700 md:text-sm">
-              {totalWords} Finnish must-have words for YKI intermediate (grade 3), with English meaning and simple Finnish explanation.
-            </p>
-
-            <div className="rounded-2xl border border-slate-200 bg-white">
+          <nav className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
+            {TAB_CONFIG.map((item, index) => (
               <button
+                key={item.id}
+                id={tabButtonId(item.id)}
+                ref={(node) => {
+                  tabButtonRefs.current[item.id] = node;
+                }}
                 type="button"
-                className="flex w-full items-start justify-between gap-3 p-3 text-left"
-                onClick={() => setShowCloudSync((current) => !current)}
-                aria-expanded={isCloudSyncExpanded}
-                aria-controls="cloud-sync-panel"
+                role="tab"
+                aria-selected={tab === item.id}
+                aria-controls={tabPanelId(item.id)}
+                tabIndex={tab === item.id ? 0 : -1}
+                className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
+                  tab === item.id
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                }`}
+                onClick={() => selectTab(item.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
               >
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
-                      {syncBadgeLabel}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-900">Cloud Sync</span>
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+        </header>
+
+        {tab === "study" && (
+          <section
+            id={tabPanelId("study")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("study")}
+            className="glass card-shadow rounded-3xl p-4 md:p-6"
+          >
+            <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
+              <span className="text-xs font-semibold text-slate-700">Study mode:</span>
+              {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
+                <button
+                  key={mode}
+                  className={`rounded-lg border px-2 py-1 text-xs ${
+                    studyFilter === mode
+                      ? "accent-gradient border-transparent text-white"
+                      : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                  }`}
+                  onClick={() => setStudyFilter(mode)}
+                >
+                  {STUDY_FILTER_LABELS[mode]}
+                </button>
+              ))}
+              <span className="ml-auto text-xs text-slate-700">Cards in mode: {studyPool.length}</span>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 text-center md:px-6 md:py-5">
+              <div className="mb-1.5 flex flex-wrap justify-center gap-2">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {TOPIC_LABELS[studyWord.topic]}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {POS_LABELS[studyWord.pos]}
+                </span>
+              </div>
+              <h2 className="mt-1 text-4xl font-extrabold text-ink md:text-[3.25rem]">{studyWord.fi}</h2>
+              {!reveal && <p className="mt-2.5 text-sm text-slate-700">Try to recall the meaning, then reveal.</p>}
+              {!reveal && studyHintLevel > 0 && (
+                <div className="mx-auto mt-2.5 max-w-2xl space-y-2 text-left">
+                  {studyHints.slice(0, studyHintLevel).map((hint, index) => (
+                    <p key={`${studyWord.id}-hint-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                      Hint {index + 1}: {hint}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {reveal && (
+                <div className="mt-2.5 space-y-2">
+                  <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
+                  <p className="text-sm text-slate-800">{studyWord.fiSimple}</p>
+                  <p className="text-sm text-slate-700">{studyExample(studyWord)}</p>
+                </div>
+              )}
+            </div>
+
+            {!reveal && (
+              <div className="mt-4 flex flex-col items-center gap-2.5">
+                <div className="grid w-full gap-2 sm:max-w-xl sm:grid-cols-2">
+                  <button
+                    ref={studyRevealButtonRef}
+                    className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white"
+                    onClick={revealStudyWord}
+                  >
+                    Reveal Meaning
+                  </button>
+                  <button
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={revealStudyHint}
+                    disabled={studyHintLevel >= studyHints.length}
+                  >
+                    {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
+                  </button>
+                </div>
+                <button
+                  className="px-3 py-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+                  onClick={nextStudyWord}
+                >
+                  Skip for Now
+                </button>
+              </div>
+            )}
+
+            {reveal && studyDecision === "none" && (
+              <div className="mt-4 flex flex-col items-center gap-2.5">
+                <div className="grid w-full gap-2 sm:max-w-xl sm:grid-cols-2">
+                  <button
+                    ref={studyKnownButtonRef}
+                    className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
+                    onClick={markStudyKnown}
+                  >
+                    Mark Known
+                  </button>
+                  <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyPractice}>
+                    Needs Practice
+                  </button>
+                </div>
+                <button
+                  className="px-3 py-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+                  onClick={nextStudyWord}
+                >
+                  Skip Without Saving
+                </button>
+              </div>
+            )}
+
+            {reveal && studyDecision !== "none" && (
+              <div className="mt-5">
+                <p className="mb-3 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
+                  {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
+                </p>
+                <button
+                  ref={studyNextButtonRef}
+                  className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto"
+                  onClick={nextStudyWord}
+                >
+                  Next Card
+                </button>
+              </div>
+            )}
+
+            {hasStudyActivity ? (
+              <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.9fr)]">
+                <div className="rounded-xl bg-slate-50/80 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink">Session overview</p>
+                    <p className="text-xs text-slate-600">
+                      This session: {studyKnownSession} known, {studyPracticeSession} needs practice
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-700" role="status" aria-live="polite">
-                    {syncMessage}
-                  </p>
-                  <p className="text-[11px] text-slate-600">Last synced: {lastSyncedLabel}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <article className="rounded-lg bg-white px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-600">Reviewed Today</p>
+                      <p className="mt-1 text-lg font-bold leading-none text-ink">{reviewedToday}</p>
+                    </article>
+                    <article className="rounded-lg bg-white px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-600">Accuracy</p>
+                      <p className="mt-1 text-lg font-bold leading-none text-ink">{accuracy}%</p>
+                    </article>
+                    <article className="rounded-lg bg-white px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-600">Practice Queue</p>
+                      <p className="mt-1 text-lg font-bold leading-none text-ink">{needsPracticeCount}</p>
+                    </article>
+                    <article className="rounded-lg bg-white px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-600">Cards in Mode</p>
+                      <p className="mt-1 text-lg font-bold leading-none text-ink">{studyPool.length}</p>
+                    </article>
+                  </div>
                 </div>
 
-                <span className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  {isCloudSyncExpanded ? "Collapse" : "Expand"}
-                  <svg
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                    className="cloud-sync-chevron h-4 w-4 text-slate-500"
-                    data-open={isCloudSyncExpanded}
-                  >
-                    <path
-                      d="M5.75 7.75 10 12l4.25-4.25"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="1.8"
+                <div className="rounded-xl bg-slate-50/80 p-3">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink">Daily goal</p>
+                    <span className="text-xs text-slate-700">
+                      {reviewedToday}/{dailyGoal}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-slate-200">
+                    <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
+                      Daily target
+                    </label>
+                    <input
+                      id="daily-goal-study"
+                      type="number"
+                      min={5}
+                      max={200}
+                      className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
+                      value={dailyGoal}
+                      onChange={(event) => {
+                        const parsed = Number(event.target.value);
+                        if (Number.isFinite(parsed) && parsed > 0) {
+                          const nextGoal = Math.round(parsed);
+                          dailyGoalRef.current = nextGoal;
+                          setDailyGoal(nextGoal);
+                        }
+                      }}
                     />
-                  </svg>
-                </span>
-              </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-xl bg-slate-50/80 px-4 py-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-ink">Session overview</p>
+                    <p className="text-sm text-slate-600">Start reviewing cards to unlock your session stats.</p>
+                  </div>
+                  <div className="min-w-0 lg:w-[320px]">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-ink">Daily goal</p>
+                      <span className="text-xs text-slate-700">
+                        {reviewedToday}/{dailyGoal}
+                      </span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-200">
+                      <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
+                        Daily target
+                      </label>
+                      <input
+                        id="daily-goal-study"
+                        type="number"
+                        min={5}
+                        max={200}
+                        className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
+                        value={dailyGoal}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value);
+                          if (Number.isFinite(parsed) && parsed > 0) {
+                            const nextGoal = Math.round(parsed);
+                            dailyGoalRef.current = nextGoal;
+                            setDailyGoal(nextGoal);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
-              <div id="cloud-sync-panel" className="cloud-sync-disclosure" data-open={isCloudSyncExpanded}>
-                <div className="cloud-sync-disclosure-inner border-t border-slate-200 px-3 pb-3 pt-3">
+        {tab === "quiz" && (
+          <section
+            id={tabPanelId("quiz")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("quiz")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
+            <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
+              <span className="text-sm font-semibold text-slate-700">Quiz mode:</span>
+              <button
+                className={`rounded-lg border px-3 py-1 text-sm ${
+                  quizMode === "mcq"
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                }`}
+                onClick={() => setQuizMode("mcq")}
+              >
+                Multiple Choice
+              </button>
+              <button
+                className={`rounded-lg border px-3 py-1 text-sm ${
+                  quizMode === "typing"
+                    ? "accent-gradient border-transparent text-white"
+                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                }`}
+                onClick={() => setQuizMode("typing")}
+              >
+                Type Finnish
+              </button>
+              <span className="ml-auto text-xs text-slate-700">
+                Score: {quizCorrect} correct / {quizWrong} wrong
+              </span>
+              {miniDrillActive && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+                  Mini drill: {miniDrillProgress}
+                </span>
+              )}
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6">
+              {quizMode === "mcq" && (
+                <>
+                  <p className="text-sm text-slate-600">Pick the English meaning:</p>
+                  <h2 className="mt-2 text-3xl font-bold text-ink">{quizWord.fi}</h2>
+                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                    {quizOptions.map((option) => (
+                      <button
+                        key={`${quizWord.id}-${option}`}
+                        ref={option === quizOptions[0] ? quizFirstOptionRef : null}
+                        className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                        onClick={() => answerMcq(option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {quizMode === "typing" && (
+                <>
+                  <p className="text-sm text-slate-600">Type the Finnish word:</p>
+                  <h2 className="mt-2 text-2xl font-bold text-ink">{quizWord.en}</h2>
+                  <label htmlFor="quiz-typing-input" className="sr-only">
+                    Type the Finnish word for {quizWord.en}
+                  </label>
+                  <input
+                    id="quiz-typing-input"
+                    ref={quizTypingInputRef}
+                    className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-none"
+                    placeholder="Write Finnish word"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={typingValue}
+                    onChange={(event) => setTypingValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        answerTyping();
+                      }
+                    }}
+                  />
+                  <button className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white" onClick={answerTyping}>
+                    Check
+                  </button>
+                </>
+              )}
+
+              {quizFeedback && (
+                <p className="mt-4 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
+                  {quizFeedback}
+                </p>
+              )}
+            </div>
+
+            <button
+              ref={quizNextButtonRef}
+              className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              onClick={nextQuiz}
+            >
+              {miniDrillLastQuestion ? "Finish Mini Drill" : "Next Question"}
+            </button>
+            {miniDrillActive && (
+              <button
+                className="ml-2 mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                onClick={stopMiniDrill}
+              >
+                Exit Mini Drill
+              </button>
+            )}
+          </section>
+        )}
+
+        {tab === "list" && (
+          <section
+            id={tabPanelId("list")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("list")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
+            <div className="grid gap-3 md:grid-cols-4">
+              <label htmlFor="word-search" className="sr-only">
+                Search words
+              </label>
+                <input
+                  id="word-search"
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none md:col-span-2"
+                  placeholder="Search Finnish, English, or clue"
+                  autoComplete="off"
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                />
+              <label htmlFor="topic-filter" className="sr-only">
+                Filter by topic
+              </label>
+              <select
+                id="topic-filter"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
+                value={topicFilter}
+                onChange={(event) => setTopicFilter(event.target.value as WordTopic | "all")}
+              >
+                <option value="all">All Topics</option>
+                {TOPICS.map((topic) => (
+                  <option key={topic} value={topic}>
+                    {TOPIC_LABELS[topic]}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="pos-filter" className="sr-only">
+                Filter by part of speech
+              </label>
+              <select
+                id="pos-filter"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
+                value={posFilter}
+                onChange={(event) => setPosFilter(event.target.value as WordPos | "all")}
+              >
+                <option value="all">All Word Types</option>
+                {POS_OPTIONS.map((pos) => (
+                  <option key={pos} value={pos}>
+                    {POS_LABELS[pos]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of {totalWords} words</p>
+
+            <div className="mt-4 space-y-3 md:hidden">
+              {filteredWords.map((word) => (
+                <article key={`mobile-word-${word.id}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-ink">{word.fi}</h3>
+                      <p className="text-sm font-semibold text-accent">{word.en}</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      {TOPIC_LABELS[word.topic]}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-700">{word.fiSimple}</p>
+                  <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">{POS_LABELS[word.pos]}</p>
+                  {renderWordStatusActions(word, true)}
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-4 hidden max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white md:block">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2">Finnish</th>
+                    <th className="px-3 py-2">English</th>
+                    <th className="px-3 py-2">Easy Finnish clue</th>
+                    <th className="px-3 py-2">Topic</th>
+                    <th className="px-3 py-2">Known</th>
+                    <th className="px-3 py-2">Needs Practice</th>
+                    <th className="px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWords.map((word) => (
+                    <tr key={word.id} className="border-t border-slate-200 align-top">
+                      <td className="px-3 py-2 font-semibold text-ink">{word.fi}</td>
+                      <td className="px-3 py-2 text-slate-800">{word.en}</td>
+                      <td className="px-3 py-2 text-slate-700">{word.fiSimple}</td>
+                      <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-600">{TOPIC_LABELS[word.topic]}</td>
+                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.known ? "yes" : "no"}</td>
+                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.needsPractice ? "yes" : "no"}</td>
+                      <td className="px-3 py-2">{renderWordStatusActions(word)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {tab === "progress" && (
+          <section
+            id={tabPanelId("progress")}
+            role="tabpanel"
+            aria-labelledby={tabButtonId("progress")}
+            className="glass card-shadow rounded-3xl p-5 md:p-8"
+          >
+            {isCloudSyncExpanded && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
+                        {syncBadgeLabel}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900">Cloud sync</span>
+                    </div>
+                    <p className="text-sm text-slate-700" role="status" aria-live="polite">
+                      {syncMessage}
+                    </p>
+                    <p className="text-xs text-slate-500">Last synced: {lastSyncedLabel}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                    onClick={() => setShowCloudSync(false)}
+                    aria-expanded={isCloudSyncExpanded}
+                    aria-controls="cloud-sync-panel"
+                  >
+                    Hide Details
+                    <svg
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                      className="cloud-sync-chevron h-4 w-4 text-slate-500"
+                      data-open={isCloudSyncExpanded}
+                    >
+                      <path
+                        d="M5.75 7.75 10 12l4.25-4.25"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="1.8"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div id="cloud-sync-panel" className="mt-3 border-t border-slate-200 pt-3">
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
@@ -1554,437 +2074,9 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <nav className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
-            {TAB_CONFIG.map((item, index) => (
-              <button
-                key={item.id}
-                id={tabButtonId(item.id)}
-                ref={(node) => {
-                  tabButtonRefs.current[item.id] = node;
-                }}
-                type="button"
-                role="tab"
-                aria-selected={tab === item.id}
-                aria-controls={tabPanelId(item.id)}
-                tabIndex={tab === item.id ? 0 : -1}
-                className={`rounded-xl border px-3 py-1.5 text-sm font-semibold ${
-                  tab === item.id
-                    ? "accent-gradient border-transparent text-white"
-                    : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-                }`}
-                onClick={() => selectTab(item.id)}
-                onKeyDown={(event) => handleTabKeyDown(event, index)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-        </header>
-
-        {tab === "study" && (
-          <section
-            id={tabPanelId("study")}
-            role="tabpanel"
-            aria-labelledby={tabButtonId("study")}
-            className="glass card-shadow rounded-3xl p-4 md:p-6"
-          >
-            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
-              <span className="text-xs font-semibold text-slate-700">Study mode:</span>
-              {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
-                <button
-                  key={mode}
-                  className={`rounded-lg border px-2 py-1 text-xs ${
-                    studyFilter === mode
-                      ? "accent-gradient border-transparent text-white"
-                      : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-                  }`}
-                  onClick={() => setStudyFilter(mode)}
-                >
-                  {mode === "practice" ? "needs practice" : mode}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-slate-700">Pool: {studyPool.length}</span>
-            </div>
-
-            <div className="mb-3 grid gap-2 grid-cols-2 lg:grid-cols-5">
-              <article className="rounded-xl border border-slate-200 bg-white p-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Reviewed</p>
-                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{reviewedToday}</p>
-              </article>
-              <article className="rounded-xl border border-slate-200 bg-white p-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Accuracy</p>
-                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{accuracy}%</p>
-              </article>
-              <article className="rounded-xl border border-slate-200 bg-white p-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Practice</p>
-                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{needsPracticeCount}</p>
-              </article>
-              <article className="rounded-xl border border-slate-200 bg-white p-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Session Known</p>
-                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{studyKnownSession}</p>
-              </article>
-              <article className="rounded-xl border border-slate-200 bg-white p-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Session Practice</p>
-                <p className="mt-0.5 text-lg font-bold leading-none text-ink">{studyPracticeSession}</p>
-              </article>
-            </div>
-
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3">
-              <div className="mb-1.5 flex items-center justify-between">
-                <p className="text-xs font-semibold text-ink">Daily goal progress</p>
-                <span className="text-xs text-slate-700">
-                  {reviewedToday}/{dailyGoal}
-                </span>
-              </div>
-              <div className="h-2.5 rounded-full bg-slate-200">
-                <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
-                  Daily goal
-                </label>
-                <input
-                  id="daily-goal-study"
-                  type="number"
-                  min={5}
-                  max={200}
-                  className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
-                  value={dailyGoal}
-                  onChange={(event) => {
-                    const parsed = Number(event.target.value);
-                    if (Number.isFinite(parsed) && parsed > 0) {
-                      const nextGoal = Math.round(parsed);
-                      dailyGoalRef.current = nextGoal;
-                      setDailyGoal(nextGoal);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
-              <div className="mb-3 flex flex-wrap justify-center gap-2">
-                <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  {studyWord.topic}
-                </span>
-                <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  {studyWord.pos}
-                </span>
-              </div>
-              <h2 className="mt-3 text-4xl font-extrabold text-ink md:text-5xl">{studyWord.fi}</h2>
-              {!reveal && <p className="mt-4 text-sm text-slate-700">Try to recall the meaning, then reveal.</p>}
-              {!reveal && studyHintLevel > 0 && (
-                <div className="mx-auto mt-4 max-w-xl space-y-2 text-left">
-                  {studyHints.slice(0, studyHintLevel).map((hint, index) => (
-                    <p key={`${studyWord.id}-hint-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                      Hint {index + 1}: {hint}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {reveal && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
-                  <p className="text-sm text-slate-800">{studyWord.fiSimple}</p>
-                  <p className="text-sm text-slate-700">{studyExample(studyWord)}</p>
-                </div>
-              )}
-            </div>
-
-            {!reveal && (
-              <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                <button
-                  ref={studyRevealButtonRef}
-                  className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white"
-                  onClick={revealStudyWord}
-                >
-                  Reveal Meaning
-                </button>
-                <button
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={revealStudyHint}
-                  disabled={studyHintLevel >= studyHints.length}
-                >
-                  {studyHintLevel === 0 ? "Get Hint" : studyHintLevel >= studyHints.length ? "No More Hints" : "More Hint"}
-                </button>
-                <button
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                  onClick={nextStudyWord}
-                >
-                  Skip Card
-                </button>
-              </div>
             )}
 
-            {reveal && studyDecision === "none" && (
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <button
-                  ref={studyKnownButtonRef}
-                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
-                  onClick={markStudyKnown}
-                >
-                  Mark Known
-                </button>
-                <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick={markStudyPractice}>
-                  Needs Practice
-                </button>
-                <button
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 sm:col-span-2"
-                  onClick={nextStudyWord}
-                >
-                  Skip Without Marking
-                </button>
-              </div>
-            )}
-
-            {reveal && studyDecision !== "none" && (
-              <div className="mt-5">
-                <p className="mb-3 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
-                  {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
-                </p>
-                <button
-                  ref={studyNextButtonRef}
-                  className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto"
-                  onClick={nextStudyWord}
-                >
-                  Next Card
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-
-        {tab === "quiz" && (
-          <section
-            id={tabPanelId("quiz")}
-            role="tabpanel"
-            aria-labelledby={tabButtonId("quiz")}
-            className="glass card-shadow rounded-3xl p-5 md:p-8"
-          >
-            <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
-              <span className="text-sm font-semibold text-slate-700">Quiz mode:</span>
-              <button
-                className={`rounded-lg border px-3 py-1 text-sm ${
-                  quizMode === "mcq"
-                    ? "accent-gradient border-transparent text-white"
-                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-                }`}
-                onClick={() => setQuizMode("mcq")}
-              >
-                Multiple Choice
-              </button>
-              <button
-                className={`rounded-lg border px-3 py-1 text-sm ${
-                  quizMode === "typing"
-                    ? "accent-gradient border-transparent text-white"
-                    : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-                }`}
-                onClick={() => setQuizMode("typing")}
-              >
-                Type Finnish
-              </button>
-              <span className="ml-auto text-xs text-slate-700">
-                Score: {quizCorrect} correct / {quizWrong} wrong
-              </span>
-              {miniDrillActive && (
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
-                  Mini drill: {miniDrillProgress}
-                </span>
-              )}
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              {quizMode === "mcq" && (
-                <>
-                  <p className="text-sm text-slate-600">Pick the English meaning:</p>
-                  <h2 className="mt-2 text-3xl font-bold text-ink">{quizWord.fi}</h2>
-                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                    {quizOptions.map((option) => (
-                      <button
-                        key={`${quizWord.id}-${option}`}
-                        ref={option === quizOptions[0] ? quizFirstOptionRef : null}
-                        className="rounded-xl border border-slate-300 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                        onClick={() => answerMcq(option)}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {quizMode === "typing" && (
-                <>
-                  <p className="text-sm text-slate-600">Type the Finnish word:</p>
-                  <h2 className="mt-2 text-2xl font-bold text-ink">{quizWord.en}</h2>
-                  <label htmlFor="quiz-typing-input" className="sr-only">
-                    Type the Finnish word for {quizWord.en}
-                  </label>
-                  <input
-                    id="quiz-typing-input"
-                    ref={quizTypingInputRef}
-                    className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-none"
-                    placeholder="Write Finnish word"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={typingValue}
-                    onChange={(event) => setTypingValue(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        answerTyping();
-                      }
-                    }}
-                  />
-                  <button className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white" onClick={answerTyping}>
-                    Check
-                  </button>
-                </>
-              )}
-
-              {quizFeedback && (
-                <p className="mt-4 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
-                  {quizFeedback}
-                </p>
-              )}
-            </div>
-
-            <button
-              ref={quizNextButtonRef}
-              className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              onClick={nextQuiz}
-            >
-              {miniDrillLastQuestion ? "Finish Mini Drill" : "Next Question"}
-            </button>
-            {miniDrillActive && (
-              <button
-                className="ml-2 mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                onClick={stopMiniDrill}
-              >
-                Exit Mini Drill
-              </button>
-            )}
-          </section>
-        )}
-
-        {tab === "list" && (
-          <section
-            id={tabPanelId("list")}
-            role="tabpanel"
-            aria-labelledby={tabButtonId("list")}
-            className="glass card-shadow rounded-3xl p-5 md:p-8"
-          >
-            <div className="grid gap-3 md:grid-cols-4">
-              <label htmlFor="word-search" className="sr-only">
-                Search words
-              </label>
-              <input
-                id="word-search"
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none md:col-span-2"
-                placeholder="Search Finnish, English, or explanation"
-                autoComplete="off"
-                value={searchValue}
-                onChange={(event) => setSearchValue(event.target.value)}
-              />
-              <label htmlFor="topic-filter" className="sr-only">
-                Filter by topic
-              </label>
-              <select
-                id="topic-filter"
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
-                value={topicFilter}
-                onChange={(event) => setTopicFilter(event.target.value as WordTopic | "all")}
-              >
-                <option value="all">All Topics</option>
-                {TOPICS.map((topic) => (
-                  <option key={topic} value={topic}>
-                    {topic}
-                  </option>
-                ))}
-              </select>
-              <label htmlFor="pos-filter" className="sr-only">
-                Filter by part of speech
-              </label>
-              <select
-                id="pos-filter"
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
-                value={posFilter}
-                onChange={(event) => setPosFilter(event.target.value as WordPos | "all")}
-              >
-                <option value="all">All POS</option>
-                {POS_OPTIONS.map((pos) => (
-                  <option key={pos} value={pos}>
-                    {pos}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <p className="mt-3 text-xs text-slate-700">Showing {filteredWords.length} of {totalWords} words</p>
-
-            <div className="mt-4 space-y-3 md:hidden">
-              {filteredWords.map((word) => (
-                <article key={`mobile-word-${word.id}`} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-bold text-ink">{word.fi}</h3>
-                      <p className="text-sm font-semibold text-accent">{word.en}</p>
-                    </div>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      {word.topic}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-700">{word.fiSimple}</p>
-                  <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">{word.pos}</p>
-                  {renderWordStatusActions(word, true)}
-                </article>
-              ))}
-            </div>
-
-            <div className="mt-4 hidden max-h-[60vh] overflow-auto rounded-2xl border border-slate-300 bg-white md:block">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
-                  <tr>
-                    <th className="px-3 py-2">Finnish</th>
-                    <th className="px-3 py-2">English</th>
-                    <th className="px-3 py-2">Easy Finnish clue</th>
-                    <th className="px-3 py-2">Topic</th>
-                    <th className="px-3 py-2">Known</th>
-                    <th className="px-3 py-2">Needs Practice</th>
-                    <th className="px-3 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWords.map((word) => (
-                    <tr key={word.id} className="border-t border-slate-200 align-top">
-                      <td className="px-3 py-2 font-semibold text-ink">{word.fi}</td>
-                      <td className="px-3 py-2 text-slate-800">{word.en}</td>
-                      <td className="px-3 py-2 text-slate-700">{word.fiSimple}</td>
-                      <td className="px-3 py-2 text-xs uppercase tracking-wide text-slate-600">{word.topic}</td>
-                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.known ? "yes" : "no"}</td>
-                      <td className="px-3 py-2 text-slate-800">{progressMap[word.id]?.needsPractice ? "yes" : "no"}</td>
-                      <td className="px-3 py-2">{renderWordStatusActions(word)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {tab === "progress" && (
-          <section
-            id={tabPanelId("progress")}
-            role="tabpanel"
-            aria-labelledby={tabButtonId("progress")}
-            className="glass card-shadow rounded-3xl p-5 md:p-8"
-          >
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className={`${isCloudSyncExpanded ? "mt-5 " : ""}grid gap-4 md:grid-cols-4`}>
               <article className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-600">Known Words</p>
                 <p className="mt-2 text-3xl font-bold text-ink">{knownCount}</p>
@@ -2066,6 +2158,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
