@@ -400,8 +400,6 @@ const buildStudyHints = (word: VocabularyWord): string[] => {
   const hints: string[] = [];
   const maskedExplanation = maskedSimpleExplanation(word);
 
-  hints.push(`Topic: ${TOPIC_LABELS[word.topic]}. Word type: ${POS_LABELS[word.pos]}.`);
-
   if (maskedExplanation.trim()) {
     hints.push(`Easy Finnish clue: ${maskedExplanation}`);
   }
@@ -2158,6 +2156,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
