@@ -16,6 +16,7 @@ export type VocabularyWord = {
   fi: string;
   en: string;
   fiSimple: string;
+  enSimple: string;
   topic: WordTopic;
   pos: WordPos;
 };

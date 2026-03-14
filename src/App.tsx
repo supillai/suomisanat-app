@@ -70,10 +70,13 @@ const normalizeFinnish = (value: string): string =>
   value
     .trim()
     .toLowerCase()
+    // Ignore punctuation so phrase cards do not require exact commas or ellipses.
+    .replace(/[.,!?;:\u2026'"`\u00B4\u2019\u2018\-()/]/g, " ")
     .replace(/\u00E4/g, "a")
     .replace(/\u00F6/g, "o")
     .replace(/\u00E5/g, "a")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .trim();
 
 const randomFrom = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
 
@@ -320,12 +323,26 @@ const pickQuizOptions = (correctWord: VocabularyWord): string[] => {
   return [...distractors, correctWord.en].sort(() => Math.random() - 0.5);
 };
 
+const verbExampleOverrides: Record<string, string> = {
+  heräsin: "Esimerkki: Minä heräsin aikaisin.",
+  menin: "Esimerkki: Minä menin kauppaan.",
+  tulin: "Esimerkki: Minä tulin kotiin.",
+  tapasin: "Esimerkki: Minä tapasin ystävän.",
+  söin: "Esimerkki: Minä söin aamupalaa.",
+  kävin: "Esimerkki: Minä kävin kirjastossa.",
+  palasin: "Esimerkki: Minä palasin kotiin."
+};
+
 const studyExample = (word: VocabularyWord): string => {
   if (word.pos === "verb") {
     if (word.fi === "olla") {
       return "Esimerkki: MinÃƒÂ¤ haluan olla ajoissa.";
     }
-    return `Esimerkki: MinÃƒÂ¤ yritÃƒÂ¤n ${word.fi} tÃƒÂ¤nÃƒÂ¤ÃƒÂ¤n.`;
+    const override = verbExampleOverrides[word.fi];
+    if (override) {
+      return override;
+    }
+    return `Esimerkki: Minä yritän ${word.fi} tänään.`;
   }
   if (word.pos === "noun") {
     return `Esimerkki: TÃƒÂ¤mÃƒÂ¤ on ${word.fi}.`;
@@ -356,24 +373,16 @@ const maskedSimpleExplanation = (word: VocabularyWord): string => {
 
 const buildStudyHints = (word: VocabularyWord): string[] => {
   const hints: string[] = [];
-  const compactFinnish = word.fi.replace(/\s+/g, "");
-  const firstLetter = compactFinnish[0] ?? word.fi[0] ?? "";
-  const letterCount = Array.from(compactFinnish).length;
-  const hasFinnishSpecialLetters = /[\u00E5\u00E4\u00F6]/iu.test(word.fi);
   const maskedExplanation = maskedSimpleExplanation(word);
 
   hints.push(`Topic: ${word.topic}. Part of speech: ${word.pos}.`);
 
-  if (firstLetter) {
-    hints.push(`Starts with "${firstLetter.toUpperCase()}" and has ${letterCount} letters.`);
-  }
-
-  if (hasFinnishSpecialLetters) {
-    hints.push("Contains Finnish special letters.");
-  }
-
   if (maskedExplanation.trim()) {
-    hints.push(`Simple Finnish clue: ${maskedExplanation}`);
+    hints.push(`Easy Finnish clue: ${maskedExplanation}`);
+  }
+
+  if (word.enSimple.trim()) {
+    hints.push(`English clue: ${word.enSimple}`);
   }
 
   return hints;
@@ -1943,7 +1952,7 @@ export default function App() {
                   <tr>
                     <th className="px-3 py-2">Finnish</th>
                     <th className="px-3 py-2">English</th>
-                    <th className="px-3 py-2">Simple Finnish</th>
+                    <th className="px-3 py-2">Easy Finnish clue</th>
                     <th className="px-3 py-2">Topic</th>
                     <th className="px-3 py-2">Known</th>
                     <th className="px-3 py-2">Needs Practice</th>
@@ -2057,6 +2066,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
