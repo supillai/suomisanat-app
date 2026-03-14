@@ -41,7 +41,7 @@ export const WordListTab = ({
         </label>
         <input
           id="word-search"
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none md:col-span-2"
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-hidden md:col-span-2"
           placeholder="Search Finnish, English, or clue"
           autoComplete="off"
           value={searchValue}
@@ -52,7 +52,7 @@ export const WordListTab = ({
         </label>
         <select
           id="topic-filter"
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-hidden"
           value={topicFilter}
           onChange={(event) => onTopicFilterChange(event.target.value as WordTopic | "all")}
         >
@@ -68,7 +68,7 @@ export const WordListTab = ({
         </label>
         <select
           id="pos-filter"
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-none"
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-accent focus:outline-hidden"
           value={posFilter}
           onChange={(event) => onPosFilterChange(event.target.value as WordPos | "all")}
         >

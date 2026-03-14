@@ -195,7 +195,7 @@ export const CloudSyncPanel = ({
                 type="email"
                 required
                 autoComplete="email"
-                className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-accent focus:outline-hidden"
                 placeholder="you@example.com"
                 value={authEmail}
                 onChange={(event) => onAuthEmailChange(event.target.value)}

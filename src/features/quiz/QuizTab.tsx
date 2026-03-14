@@ -137,7 +137,7 @@ export const QuizTab = ({
             <input
               id="quiz-typing-input"
               ref={quizTypingInputRef}
-              className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-none"
+              className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 focus:border-accent focus:outline-hidden"
               placeholder="Write Finnish word"
               autoComplete="off"
               autoCorrect="off"
