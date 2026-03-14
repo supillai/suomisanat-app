@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { ProgressMap, VocabularyWord } from "../../types";
 import {
@@ -58,12 +58,12 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
     dailyGoalRef.current = dailyGoal;
   }, [dailyGoal]);
 
-  const replaceSnapshot = (nextProgress: ProgressMap, nextDailyGoal: number): void => {
+  const replaceSnapshot = useCallback((nextProgress: ProgressMap, nextDailyGoal: number): void => {
     progressMapRef.current = nextProgress;
     dailyGoalRef.current = nextDailyGoal;
     setProgressMap(nextProgress);
     setDailyGoal(nextDailyGoal);
-  };
+  }, []);
 
   const updateDailyGoal = (nextGoal: number): void => {
     if (!Number.isFinite(nextGoal) || nextGoal <= 0) return;
