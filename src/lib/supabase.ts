@@ -7,23 +7,44 @@ const isE2eMode = import.meta.env.MODE === "e2e";
 
 type AppSupabaseClient = Pick<SupabaseClient, "auth" | "from">;
 
-const e2eSupabase =
-  isE2eMode && typeof window !== "undefined"
-    ? (window as Window & { __SUOMISANAT_E2E_SUPABASE__?: AppSupabaseClient }).__SUOMISANAT_E2E_SUPABASE__ ?? null
-    : null;
+declare global {
+  interface Window {
+    __SUOMISANAT_E2E_SUPABASE__?: AppSupabaseClient;
+  }
+}
 
 const hasConfiguredSupabase = Boolean(supabaseUrl && supabasePublishableKey);
+let configuredSupabase: AppSupabaseClient | null | undefined;
 
-export const hasSupabaseConfig = Boolean(e2eSupabase) || hasConfiguredSupabase;
+const getE2eSupabaseClient = (): AppSupabaseClient | null => {
+  if (!isE2eMode || typeof window === "undefined") {
+    return null;
+  }
 
-export const supabase: AppSupabaseClient | null = e2eSupabase
-  ? e2eSupabase
-  : hasConfiguredSupabase
-    ? createClient(supabaseUrl!, supabasePublishableKey!, {
+  return window.__SUOMISANAT_E2E_SUPABASE__ ?? null;
+};
+
+export const getSupabaseClient = (): AppSupabaseClient | null => {
+  const e2eSupabase = getE2eSupabaseClient();
+  if (e2eSupabase) {
+    return e2eSupabase;
+  }
+
+  if (!hasConfiguredSupabase) {
+    return null;
+  }
+
+  if (configuredSupabase === undefined) {
+    configuredSupabase = createClient(supabaseUrl!, supabasePublishableKey!, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
       }
-    })
-    : null;
+    });
+  }
+
+  return configuredSupabase;
+};
+
+export const hasSupabaseConfig = (): boolean => Boolean(getE2eSupabaseClient()) || hasConfiguredSupabase;

@@ -1,8 +1,9 @@
-﻿import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { POS_LABELS, STUDY_FILTER_LABELS, TOPIC_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
 import type { StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
 import type { VocabularyWord } from "../../types";
+import { useFinePointer } from "../../utils/useFinePointer";
 
 type StudyTabProps = {
   studyFilter: StudyFilter;
@@ -38,6 +39,13 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 
 const isButtonTarget = (target: EventTarget | null): boolean => target instanceof HTMLElement && target.tagName === "BUTTON";
 
+const MOBILE_STUDY_FILTER_LABELS: Record<StudyFilter, string> = {
+  all: "All",
+  unknown: "New",
+  known: "Known",
+  practice: "Practice"
+};
+
 export const StudyTab = ({
   studyFilter,
   studyPool,
@@ -65,8 +73,20 @@ export const StudyTab = ({
   const studyRevealButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyKnownButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyNextButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [showMobileExample, setShowMobileExample] = useState(false);
+  const supportsKeyboardUI = useFinePointer();
+  const cardsInModeLabel = `${studyPool.length} ${studyPool.length === 1 ? "card" : "cards"}`;
+  const showHintCounter = !reveal && studyHintLevel > 0;
+  const examplePanelId = `study-example-${studyWord.id}`;
+  const studyExampleText = studyExample(studyWord);
 
   useEffect(() => {
+    setShowMobileExample(false);
+  }, [reveal, studyWord.id]);
+
+  useEffect(() => {
+    if (!supportsKeyboardUI) return;
+
     const target = !reveal
       ? studyRevealButtonRef.current
       : studyDecision === "none"
@@ -79,7 +99,7 @@ export const StudyTab = ({
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [reveal, studyDecision, studyWord.id]);
+  }, [reveal, studyDecision, studyWord.id, supportsKeyboardUI]);
 
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) return;
@@ -130,48 +150,73 @@ export const StudyTab = ({
   });
 
   useEffect(() => {
+    if (!supportsKeyboardUI) return;
+
     const listener = (event: KeyboardEvent) => {
       handleShortcut(event);
     };
 
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, []);
+  }, [supportsKeyboardUI]);
 
   return (
     <section
       id={tabPanelId("study")}
       role="tabpanel"
       aria-labelledby={tabButtonId("study")}
-      className="surface-card study-shell rounded-[28px] px-5 py-5 md:px-7 md:py-6"
+      className="surface-card study-shell rounded-[28px] px-4 py-4 md:px-7 md:py-6"
     >
-      <div className="study-toolbar mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
-        <span className="eyebrow">Study mode</span>
-        {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
-          <button
-            key={mode}
-            className={`chip-button ${studyFilter === mode ? "chip-button-active" : "chip-button-idle"}`}
-            onClick={() => onStudyFilterChange(mode)}
-          >
-            {STUDY_FILTER_LABELS[mode]}
-          </button>
-        ))}
-        <span className="ml-auto text-sm text-slate-700">Cards in mode: {studyPool.length}</span>
+      <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
+        <div className="flex items-center justify-between gap-2">
+          <span className="eyebrow">Study mode</span>
+          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
+            {cardsInModeLabel}
+          </span>
+        </div>
+        <div className="touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+          {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-label={STUDY_FILTER_LABELS[mode]}
+              className={`chip-button shrink-0 ${studyFilter === mode ? "chip-button-active" : "chip-button-idle"}`}
+              onClick={() => onStudyFilterChange(mode)}
+            >
+              <span className="md:hidden">{MOBILE_STUDY_FILTER_LABELS[mode]}</span>
+              <span className="hidden md:inline">{STUDY_FILTER_LABELS[mode]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="surface-subtle study-card rounded-[28px] px-5 py-4 text-center md:px-6 md:py-5">
-        <div className="study-card-top flex flex-wrap items-center justify-between gap-2 text-left">
+      <div className="surface-subtle study-card rounded-[28px] px-4 py-4 text-center md:px-6 md:py-5">
+        <div className="study-card-top flex flex-wrap items-start justify-between gap-2 text-left">
           <div className="flex flex-wrap gap-2">
             <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
             <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
           </div>
-          <p className="study-shortcuts text-xs text-slate-500">Space/Enter reveal, H hint, K known, P practice, N next</p>
+          {(showHintCounter || supportsKeyboardUI) && (
+            <div className="flex max-w-[18rem] flex-wrap items-center justify-end gap-2">
+              {showHintCounter && (
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Hints {studyHintLevel}/{studyHints.length}
+                </span>
+              )}
+              {supportsKeyboardUI && <p className="study-shortcuts text-xs text-slate-500 md:text-right">Space/Enter reveal, H hint, K known, P practice, N next</p>}
+            </div>
+          )}
         </div>
 
-        <h2 className="study-word mt-4 text-4xl font-semibold tracking-tight text-ink md:text-[3.25rem]" lang="fi">
+        <h2 className="study-word mt-3.5 text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink md:text-[3.25rem]" lang="fi">
           {studyWord.fi}
         </h2>
-        {!reveal && <p className="study-prompt mt-2.5 text-sm text-slate-700">Try to recall the meaning before revealing the answer.</p>}
+        {!reveal && (
+          <>
+            <p className="study-prompt mt-2 text-sm text-slate-700 md:hidden">Think of the meaning first.</p>
+            <p className="study-prompt mt-2 hidden text-sm text-slate-700 md:block">Try to recall the meaning before revealing the answer.</p>
+          </>
+        )}
         {!reveal && studyHintLevel > 0 && (
           <div className="mx-auto mt-3 max-w-2xl space-y-2 text-left">
             {studyHints.slice(0, studyHintLevel).map((hint, index) => (
@@ -182,49 +227,77 @@ export const StudyTab = ({
           </div>
         )}
         {reveal && (
-          <div className="mx-auto mt-3 max-w-2xl space-y-2">
-            <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
-            <p className="text-sm text-slate-800" lang="fi">
-              {studyWord.fiSimple}
-            </p>
-            <p className="text-sm text-slate-700" lang="fi">
-              {studyExample(studyWord)}
-            </p>
+          <div className="mx-auto mt-3 max-w-2xl space-y-3 text-left">
+            <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Meaning</p>
+              <p className="mt-1 text-xl font-semibold text-accent">{studyWord.en}</p>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Easy Finnish</p>
+              <p className="mt-1 text-sm text-slate-800" lang="fi">
+                {studyWord.fiSimple}
+              </p>
+            </div>
+            <div className="hidden rounded-[22px] border border-slate-200 bg-white px-4 py-3 md:block">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Example</p>
+              <p className="mt-1 text-sm text-slate-700" lang="fi">
+                {studyExampleText}
+              </p>
+            </div>
+            <div className="md:hidden">
+              <button
+                type="button"
+                className="action-secondary w-full rounded-full px-4 py-2 text-sm font-semibold"
+                aria-expanded={showMobileExample}
+                aria-controls={examplePanelId}
+                onClick={() => setShowMobileExample((current) => !current)}
+              >
+                {showMobileExample ? "Hide example" : "Show example"}
+              </button>
+              {showMobileExample && (
+                <div id={examplePanelId} className="mt-2 rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Example</p>
+                  <p className="mt-1 text-sm text-slate-700" lang="fi">
+                    {studyExampleText}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
       {!reveal && (
-        <div className="study-actions mt-4 flex flex-col items-center gap-3">
-          <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
-            <button ref={studyRevealButtonRef} className="action-primary rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
+        <div className="study-actions mt-4 flex flex-col gap-3">
+          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 sm:max-w-xl">
+            <button ref={studyRevealButtonRef} className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
               Reveal Meaning
             </button>
             <button
-              className="action-secondary rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              className="action-secondary w-full rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               onClick={onRevealStudyHint}
               disabled={studyHintLevel >= studyHints.length}
             >
               {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
             </button>
           </div>
-          <button className="action-ghost rounded-full px-4 py-2 text-sm font-semibold" onClick={onNextStudyWord}>
+          <button className="action-ghost w-full rounded-full px-4 py-2 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
             Skip for Now
           </button>
         </div>
       )}
 
       {reveal && studyDecision === "none" && (
-        <div className="study-actions mt-4 flex flex-col items-center gap-3">
-          <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
-            <button ref={studyKnownButtonRef} className="action-success rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
+        <div className="study-actions mt-4 flex flex-col gap-3">
+          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 sm:max-w-xl">
+            <button ref={studyKnownButtonRef} className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
               Mark Known
             </button>
-            <button className="action-warning rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
+            <button className="action-warning w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
               Needs Practice
             </button>
           </div>
-          <button className="action-ghost rounded-full px-4 py-2 text-sm font-semibold" onClick={onNextStudyWord}>
+          <button className="action-ghost w-full rounded-full px-4 py-2 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
             Skip Without Saving
           </button>
         </div>
@@ -237,7 +310,7 @@ export const StudyTab = ({
               {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
             </p>
           </div>
-          <button ref={studyNextButtonRef} className="action-primary mt-3 rounded-full px-5 py-3 text-sm font-semibold" onClick={onNextStudyWord}>
+          <button ref={studyNextButtonRef} className="action-primary mt-3 w-full rounded-full px-5 py-3 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
             Next Card
           </button>
         </div>
@@ -282,7 +355,7 @@ export const StudyTab = ({
             <div className="progress-track">
               <div className="progress-bar" style={{ width: `${goalPct}%` }} />
             </div>
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
               <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
                 Daily target
               </label>
@@ -291,7 +364,7 @@ export const StudyTab = ({
                 type="number"
                 min={5}
                 max={200}
-                className="text-input text-input-idle w-24"
+                className="text-input text-input-idle w-full min-[420px]:w-24"
                 value={dailyGoal}
                 onChange={(event) => onDailyGoalChange(Number(event.target.value))}
               />
@@ -299,11 +372,11 @@ export const StudyTab = ({
           </div>
         </div>
       ) : (
-        <div className="surface-subtle mt-6 rounded-[24px] px-5 py-4">
+        <div className="surface-subtle mt-6 rounded-[24px] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
               <p className="section-title">Session overview</p>
-              <p className="text-sm text-slate-600">Start reviewing cards to unlock your daily study stats.</p>
+              <p className="text-sm text-slate-600">Review a card to start today's study stats.</p>
             </div>
             <div className="min-w-0 lg:w-[340px]">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -315,7 +388,7 @@ export const StudyTab = ({
               <div className="progress-track">
                 <div className="progress-bar" style={{ width: `${goalPct}%` }} />
               </div>
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
                 <label htmlFor="daily-goal-study-empty" className="text-sm text-slate-700">
                   Daily target
                 </label>
@@ -324,7 +397,7 @@ export const StudyTab = ({
                   type="number"
                   min={5}
                   max={200}
-                  className="text-input text-input-idle w-24"
+                  className="text-input text-input-idle w-full min-[420px]:w-24"
                   value={dailyGoal}
                   onChange={(event) => onDailyGoalChange(Number(event.target.value))}
                 />
@@ -336,4 +409,3 @@ export const StudyTab = ({
     </section>
   );
 };
-

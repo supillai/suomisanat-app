@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProgressMap, VocabularyWord, WordPos, WordTopic } from "../../types";
 
 export type WordListSort = "fi" | "en" | "topic" | "recent";
@@ -28,6 +28,14 @@ type WordRow = {
 const compareFinnish = (first: string, second: string): number => first.localeCompare(second, "fi");
 const compareEnglish = (first: string, second: string): number => first.localeCompare(second, "en");
 const DUE_THRESHOLD = 24;
+
+const getInitialWordListView = (): WordListView => {
+  if (typeof window !== "undefined" && "matchMedia" in window && window.matchMedia("(max-width: 767px)").matches) {
+    return "due-next";
+  }
+
+  return "all";
+};
 
 const toDueScore = (progressMap: ProgressMap, word: VocabularyWord): number => {
   const state = progressMap[word.id];
@@ -59,7 +67,7 @@ export const useWordFilters = (words: VocabularyWord[], progressMap: ProgressMap
   const [topicFilter, setTopicFilter] = useState<WordTopic | "all">("all");
   const [posFilter, setPosFilter] = useState<WordPos | "all">("all");
   const [sortBy, setSortBy] = useState<WordListSort>("fi");
-  const [viewMode, setViewMode] = useState<WordListView>("all");
+  const [viewMode, setViewMode] = useState<WordListView>(() => getInitialWordListView());
 
   const rows = useMemo<WordRow[]>(() => {
     return words.map((word) => ({

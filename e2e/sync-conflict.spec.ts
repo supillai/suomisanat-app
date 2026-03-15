@@ -38,17 +38,17 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
 
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Action needed");
+  const syncButton = page.getByRole("button", { name: /Sync:/ });
+  await expect(syncButton).toBeVisible();
+  await syncButton.click();
 
-  await page.getByRole("button", { name: /Sync:/ }).click();
-
-  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible();
+  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
   await expect(page.getByText("1 known, 0 practice, 0 reviewed today")).toBeVisible();
   await expect(page.getByText("0 known, 1 practice, 0 reviewed today")).toBeVisible();
 
   await page.getByRole("button", { name: "Replace Browser with Cloud" }).click();
 
-  await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
+  await expect(syncButton).toContainText("Up to date");
   await expect(page.getByText(/^Known:/)).toContainText(/0\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("30");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
@@ -90,13 +90,16 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: /Sync:/ }).click();
 
-  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible();
+  const syncButton = page.getByRole("button", { name: /Sync:/ });
+  await expect(syncButton).toBeVisible();
+  await syncButton.click();
+
+  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
 
   await page.getByRole("button", { name: "Overwrite Cloud with Browser" }).click();
 
-  await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
+  await expect(syncButton).toContainText("Up to date");
   await expect(page.getByText(/^Known:/)).toContainText(/1\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("15");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);

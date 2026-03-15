@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 @config "../tailwind.config.js";
 
 :root {
@@ -49,16 +49,19 @@
 
 html {
   min-height: 100%;
+  min-height: 100dvh;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text-strong);
   background: transparent;
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 button,
@@ -72,8 +75,10 @@ button {
   transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
 
-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
 }
 
 button:disabled {
@@ -86,9 +91,13 @@ button:disabled {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-frame {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
   transition: padding 180ms ease;
 }
 
@@ -131,11 +140,15 @@ button:disabled {
 }
 
 .nav-tab {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
   border-radius: 1.1rem;
   padding: 0.85rem 1rem;
   font-size: 0.95rem;
   font-weight: 700;
-  text-align: left;
+  text-align: center;
 }
 
 .nav-tab-active {
@@ -151,6 +164,7 @@ button:disabled {
 }
 
 .chip-button {
+  min-height: 2.75rem;
   border-radius: var(--radius-pill);
   padding: 0.65rem 1rem;
   font-size: 0.84rem;
@@ -174,6 +188,7 @@ button:disabled {
 .action-ghost,
 .action-success,
 .action-warning {
+  min-height: 2.75rem;
   border: none;
 }
 
@@ -366,6 +381,15 @@ button:disabled {
   font-size: 0.76rem;
 }
 
+.touch-scroll-row {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.touch-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
 .loading-panel {
   position: relative;
   overflow: hidden;
@@ -399,13 +423,65 @@ button:disabled {
   }
 }
 
-@media (max-width: 640px) {
-  .nav-tab {
-    text-align: center;
+@media (max-width: 767px) {
+  .app-hero {
+    padding-bottom: 1rem;
+  }
+
+  .hero-top {
+    gap: 0.9rem;
+  }
+
+  .hero-badges {
+    gap: 0.65rem;
+  }
+
+  .mobile-tab-bar {
+    position: fixed;
+    right: max(0.8rem, env(safe-area-inset-right));
+    bottom: calc(0.8rem + env(safe-area-inset-bottom));
+    left: max(0.8rem, env(safe-area-inset-left));
+    z-index: 40;
+    gap: 0.45rem;
+    padding: 0.55rem;
+    border: 1px solid rgba(125, 144, 163, 0.2);
+    border-radius: 1.6rem;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 18px 40px rgba(19, 39, 58, 0.18);
+    backdrop-filter: blur(18px);
+  }
+
+  .mobile-tab-bar .nav-tab {
+    min-width: 0;
+    min-height: 3.3rem;
+    border-radius: 1rem;
+    padding: 0.55rem 0.35rem;
+    font-size: 0.78rem;
+    line-height: 1.15;
+  }
+
+  .mobile-tab-bar .nav-tab-active {
+    background: linear-gradient(135deg, var(--accent-strong), var(--accent-mid));
+    color: white;
+    box-shadow: 0 12px 24px rgba(14, 139, 131, 0.24);
+  }
+
+  .mobile-tab-bar .nav-tab-idle {
+    background: transparent;
+    color: var(--text-body);
+    border: 1px solid transparent;
   }
 
   .metric-value {
     font-size: 1.8rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-frame {
+    padding-left: max(2rem, env(safe-area-inset-left));
+    padding-right: max(2rem, env(safe-area-inset-right));
+    padding-bottom: 1.25rem;
   }
 }
 

@@ -10,20 +10,24 @@ const WordListTabScreen = lazy(() => import("./features/words/WordListTabScreen"
 const ProgressTabScreen = lazy(() => import("./features/progress/ProgressTabScreen"));
 
 const AppFrame = ({ children }: { children: ReactNode }) => (
-  <div className="app-frame min-h-screen px-4 py-4 md:px-8 md:py-5">
+  <div className="app-frame min-h-dvh px-4 py-4 md:px-8 md:py-5">
     <div className="mx-auto max-w-6xl">{children}</div>
   </div>
 );
 
 const TabLoadingCard = ({ label }: { label: string }) => (
-  <section className="surface-card loading-panel rounded-[28px] px-6 py-8">
+  <section className="surface-card loading-panel rounded-[28px] px-4 py-5 md:px-6 md:py-8">
     <p className="eyebrow">Loading</p>
-    <h2 className="mt-3 text-2xl font-semibold text-ink">{label}</h2>
-    <p className="mt-2 max-w-2xl text-sm text-slate-600">Preparing this workspace and restoring the latest local state.</p>
-    <div className="mt-6 grid gap-3 md:grid-cols-3">
-      <div className="skeleton-block h-28 rounded-3xl" />
-      <div className="skeleton-block h-28 rounded-3xl" />
-      <div className="skeleton-block h-28 rounded-3xl" />
+    <h2 className="mt-2 text-2xl font-semibold text-ink">{label}</h2>
+    <p className="mt-1.5 text-sm text-slate-600 md:hidden">Restoring this tab.</p>
+    <p className="mt-2 hidden max-w-2xl text-sm text-slate-600 md:block">Preparing this workspace and restoring the latest local state.</p>
+    <div className="mt-5 space-y-3 md:mt-6">
+      <div className="skeleton-block h-18 rounded-3xl md:h-20" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="skeleton-block h-24 rounded-3xl md:h-28" />
+        <div className="skeleton-block h-24 rounded-3xl md:h-28" />
+        <div className="skeleton-block hidden h-24 rounded-3xl md:block md:h-28" />
+      </div>
     </div>
   </section>
 );
@@ -31,22 +35,25 @@ const TabLoadingCard = ({ label }: { label: string }) => (
 const DatasetStateCard = ({
   title,
   body,
+  mobileBody,
   actionLabel,
   onAction
 }: {
   title: string;
   body: string;
+  mobileBody?: string;
   actionLabel?: string;
   onAction?: () => void;
 }) => (
   <AppFrame>
-    <section className="surface-card rounded-[32px] px-6 py-8 md:px-8 md:py-10">
+    <section className="surface-card rounded-[30px] px-5 py-6 md:rounded-[32px] md:px-8 md:py-10">
       <div className="max-w-2xl space-y-3">
         <p className="eyebrow">SuomiSanat</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-ink md:text-4xl">{title}</h1>
-        <p className="text-base leading-7 text-slate-700">{body}</p>
+        <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-ink md:text-4xl">{title}</h1>
+        <p className="text-sm leading-6 text-slate-700 md:hidden">{mobileBody ?? body}</p>
+        <p className="hidden text-base leading-7 text-slate-700 md:block">{body}</p>
         {actionLabel && onAction && (
-          <button type="button" className="action-primary mt-3 rounded-full px-5 py-3 text-sm font-semibold" onClick={onAction}>
+          <button type="button" className="action-primary mt-3 w-full rounded-full px-5 py-3 text-sm font-semibold sm:w-auto" onClick={onAction}>
             {actionLabel}
           </button>
         )}
@@ -64,6 +71,7 @@ const AppShell = () => {
         tab={tab}
         totalWords={progressStore.stats.totalWords}
         knownCount={progressStore.stats.knownCount}
+        reviewedToday={progressStore.stats.reviewedToday}
         syncBadgeLabel={cloudSync.syncBadgeLabel}
         syncBadgeClass={cloudSync.syncBadgeClass}
         onTabChange={setTab}
@@ -88,6 +96,7 @@ export default function App() {
       <DatasetStateCard
         title="Loading vocabulary set"
         body="Fetching the current SuomiSanat word pack and validating its structure before the study tools mount."
+        mobileBody="Preparing the Finnish word pack for study."
       />
     );
   }
@@ -97,6 +106,7 @@ export default function App() {
       <DatasetStateCard
         title="Vocabulary data could not load"
         body={dataset.error ?? "The word dataset failed validation or could not be fetched."}
+        mobileBody="Could not open the Finnish word pack in this browser."
         actionLabel="Retry"
         onAction={dataset.reload}
       />
@@ -109,6 +119,7 @@ export default function App() {
     </AppStateProvider>
   );
 }
+
 
 
 

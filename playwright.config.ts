@@ -19,6 +19,10 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] }
+    },
+    {
+      name: "pixel-5",
+      use: { ...devices["Pixel 5"] }
     }
   ]
 });

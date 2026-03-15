@@ -1,7 +1,7 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { hasSupabaseConfig, supabase } from "../../lib/supabase";
+import { getSupabaseClient, hasSupabaseConfig } from "../../lib/supabase";
 import type { ProgressMap } from "../../types";
 import { DEFAULT_DAILY_GOAL, SYNC_DEBOUNCE_MS } from "../app/app.constants";
 import { hasTrackedProgress, summarizeProgress } from "../progress/progress.utils";
@@ -64,7 +64,7 @@ export const useCloudSync = ({
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [showCloudSync, setShowCloudSync] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig ? "loading" : "idle");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig() ? "loading" : "idle");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasHydratedServer, setHasHydratedServer] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -131,7 +131,7 @@ export const useCloudSync = ({
   }, [applyHydratedState, dailyGoal, progressMap, syncConflict]);
 
   const flushSyncNow = useCallback(async (): Promise<void> => {
-    const client = supabase;
+    const client = getSupabaseClient();
     const userId = sessionRef.current?.user.id;
     if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current || syncConflictRef.current) return;
 
@@ -191,7 +191,7 @@ export const useCloudSync = ({
   }, [flushSyncNow]);
 
   const resolveSyncConflict = async (choice: SyncResolutionChoice): Promise<void> => {
-    const client = supabase;
+    const client = getSupabaseClient();
     const userId = session?.user.id;
     if (!client || !userId || !syncConflict) return;
 
@@ -243,7 +243,7 @@ export const useCloudSync = ({
   };
 
   useEffect(() => {
-    const client = supabase;
+    const client = getSupabaseClient();
     if (!client) return;
 
     let cancelled = false;
@@ -281,7 +281,7 @@ export const useCloudSync = ({
   }, []);
 
   useEffect(() => {
-    const client = supabase;
+    const client = getSupabaseClient();
     if (!client) return;
 
     const userId = session?.user.id;
@@ -369,7 +369,7 @@ export const useCloudSync = ({
   }, [applyHydratedState, dailyGoalRef, progressMapRef, session?.user.id]);
 
   useEffect(() => {
-    const client = supabase;
+    const client = getSupabaseClient();
     if (!client) return;
 
     const userId = session?.user.id;
@@ -384,7 +384,7 @@ export const useCloudSync = ({
   }, [hasHydratedServer, progressMap, scheduleSyncFlush, session?.user.id]);
 
   useEffect(() => {
-    const client = supabase;
+    const client = getSupabaseClient();
     if (!client) return;
 
     const userId = session?.user.id;
@@ -399,7 +399,7 @@ export const useCloudSync = ({
   }, [dailyGoal, hasHydratedServer, scheduleSyncFlush, session?.user.id]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!getSupabaseClient()) return;
 
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "hidden") {
@@ -421,7 +421,8 @@ export const useCloudSync = ({
   }, [flushSyncNow]);
 
   const sendMagicLink = async (): Promise<void> => {
-    if (!supabase || authBusy) return;
+    const client = getSupabaseClient();
+    if (!client || authBusy) return;
 
     const email = authEmail.trim().toLowerCase();
     if (!email) {
@@ -432,7 +433,7 @@ export const useCloudSync = ({
     setAuthBusy(true);
     setAuthMessage("");
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await client.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: window.location.origin
@@ -449,12 +450,13 @@ export const useCloudSync = ({
   };
 
   const signOut = async (): Promise<void> => {
-    if (!supabase || authBusy) return;
+    const client = getSupabaseClient();
+    if (!client || authBusy) return;
 
     setAuthBusy(true);
     setAuthMessage("");
 
-    const { error } = await supabase.auth.signOut();
+    const { error } = await client.auth.signOut();
     if (error) {
       setAuthMessage(`Sign out failed: ${error.message}`);
     } else {
@@ -470,7 +472,9 @@ export const useCloudSync = ({
     [syncConflict]
   );
 
-  const syncBadgeLabel = !hasSupabaseConfig
+  const supabaseConfigured = hasSupabaseConfig();
+
+  const syncBadgeLabel = !supabaseConfigured
     ? "Local only"
     : syncConflict
       ? "Action needed"
@@ -486,7 +490,7 @@ export const useCloudSync = ({
                 ? "Error"
                 : "Idle";
 
-  const syncBadgeClass = !hasSupabaseConfig
+  const syncBadgeClass = !supabaseConfigured
     ? "border-slate-300 bg-slate-100 text-slate-700"
     : syncConflict
       ? "border-amber-300 bg-amber-50 text-amber-900"
@@ -496,7 +500,7 @@ export const useCloudSync = ({
           ? "border-sky-300 bg-sky-50 text-sky-800"
           : "border-emerald-300 bg-emerald-50 text-emerald-800";
 
-  const syncMessage = !hasSupabaseConfig
+  const syncMessage = !supabaseConfigured
     ? "Cloud sync is disabled. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY."
     : syncConflict?.mode === "cloud-empty"
       ? "This browser has local progress, but the cloud snapshot is empty. Choose whether to upload the browser snapshot or discard it."
@@ -520,7 +524,7 @@ export const useCloudSync = ({
   );
 
   return {
-    hasSupabaseConfig,
+    hasSupabaseConfig: supabaseConfigured,
     session,
     authEmail,
     setAuthEmail,
@@ -546,3 +550,7 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
+
+
+
+

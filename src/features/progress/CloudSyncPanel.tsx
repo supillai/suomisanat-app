@@ -1,4 +1,4 @@
-﻿import type { Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import type { ProgressSummary } from "./progress.utils";
 import type { SyncConflict, SyncResolutionChoice, SyncStatus } from "../sync/sync.types";
 
@@ -26,6 +26,39 @@ type CloudSyncPanelProps = {
   onAuthEmailChange: (value: string) => void;
   onSendMagicLink: () => void;
 };
+
+type SnapshotSummaryCardProps = {
+  title: string;
+  summary: ProgressSummary;
+};
+
+const SnapshotSummaryCard = ({ title, summary }: SnapshotSummaryCardProps) => (
+  <article className="min-w-[250px] flex-none rounded-[22px] border border-amber-200 bg-white/90 p-4 sm:min-w-0">
+    <p className="eyebrow">{title}</p>
+    <p className="mt-2 text-sm text-slate-800">
+      {summary.known} known, {summary.needsPractice} practice, {summary.reviewedToday} reviewed today
+    </p>
+    <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="rounded-[18px] bg-slate-50 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tracked</p>
+        <p className="mt-1 text-sm font-semibold text-ink">{summary.trackedWords}</p>
+      </div>
+      <div className="rounded-[18px] bg-slate-50 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Goal</p>
+        <p className="mt-1 text-sm font-semibold text-ink">{summary.dailyGoal}</p>
+      </div>
+      <div className="rounded-[18px] bg-slate-50 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Correct</p>
+        <p className="mt-1 text-sm font-semibold text-ink">{summary.totalCorrect}</p>
+      </div>
+      <div className="rounded-[18px] bg-slate-50 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Accuracy</p>
+        <p className="mt-1 text-sm font-semibold text-ink">{summary.accuracy}%</p>
+      </div>
+    </div>
+    <p className="mt-3 text-xs text-slate-600">{summary.totalWrong} wrong answers recorded.</p>
+  </article>
+);
 
 export const CloudSyncPanel = ({
   isExpanded,
@@ -63,26 +96,40 @@ export const CloudSyncPanel = ({
       localSyncSummary.totalWrong === cloudSyncSummary.totalWrong
   );
   const showHistoryMismatchCopy = syncConflict?.mode === "different-data" && summariesMatch;
+  const connectionLabel = !hasSupabaseConfig
+    ? "Local-only mode"
+    : session
+      ? `Signed in as ${session.user.email ?? "your account"}`
+      : "Signed out";
+  const connectionMetaLabel = !hasSupabaseConfig
+    ? "Configure Supabase to enable cloud sync."
+    : session
+      ? "Cloud sync is available in this browser."
+      : "Progress stays in this browser until you sign in.";
 
   return (
     <div className="surface-subtle rounded-[28px] p-4 md:p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0 space-y-2">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
               {syncBadgeLabel}
             </span>
             <span className="section-title">Cloud sync</span>
           </div>
-          <p className="text-sm text-slate-700" role="status" aria-live="polite">
+          <p className="text-sm leading-5 text-slate-700" role="status" aria-live="polite">
             {syncMessage}
           </p>
-          <p className="text-xs text-slate-500">Last synced: {lastSyncedLabel}</p>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
+            <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">Last synced: {lastSyncedLabel}</span>
+            <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">{connectionLabel}</span>
+          </div>
+          <p className="text-xs text-slate-500">{connectionMetaLabel}</p>
         </div>
 
         <button
           type="button"
-          className="action-ghost flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+          className="action-ghost inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold md:w-auto"
           onClick={onHide}
           aria-expanded={isExpanded}
           aria-controls="cloud-sync-panel"
@@ -102,32 +149,34 @@ export const CloudSyncPanel = ({
       </div>
 
       <div id="cloud-sync-panel" className="mt-4 border-t border-slate-200 pt-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="action-primary rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={onSyncNow}
-              disabled={!canManualSync}
-            >
-              Sync Now
-            </button>
-            {hasSupabaseConfig && session && (
+        <div className="flex flex-col gap-4">
+          {hasSupabaseConfig && session && (
+            <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
               <button
                 type="button"
-                className="action-secondary rounded-full px-4 py-2 text-sm font-semibold"
+                className="action-primary w-full rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                onClick={onSyncNow}
+                disabled={!canManualSync}
+              >
+                Sync Now
+              </button>
+              <button
+                type="button"
+                className="action-secondary w-full rounded-full px-4 py-2 text-sm font-semibold sm:w-auto"
                 onClick={onSignOut}
                 disabled={authBusy}
               >
                 Sign Out
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {syncError && (
-            <p className="text-sm text-rose-700" role="status" aria-live="polite">
-              {syncError}
-            </p>
+            <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-sm text-rose-700" role="status" aria-live="polite">
+                {syncError}
+              </p>
+            </div>
           )}
 
           {syncConflict && cloudSyncSummary && (
@@ -140,7 +189,7 @@ export const CloudSyncPanel = ({
                       ? "Totals match, but per-word history differs"
                       : "Browser and cloud snapshots differ"}
                 </p>
-                <p className="text-sm text-amber-900">
+                <p className="text-sm leading-5 text-amber-900">
                   {syncConflict.mode === "cloud-empty"
                     ? "Choose whether to upload this browser snapshot to the cloud or discard it and keep the empty cloud state."
                     : showHistoryMismatchCopy
@@ -149,31 +198,9 @@ export const CloudSyncPanel = ({
                 </p>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <article className="rounded-[22px] border border-amber-200 bg-white/90 p-4">
-                  <p className="eyebrow">This browser snapshot</p>
-                  <p className="mt-2 text-sm text-slate-800">
-                    {localSyncSummary.known} known, {localSyncSummary.needsPractice} practice, {localSyncSummary.reviewedToday} reviewed today
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {localSyncSummary.trackedWords} tracked words, daily goal {localSyncSummary.dailyGoal}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {localSyncSummary.totalCorrect} correct, {localSyncSummary.totalWrong} wrong, {localSyncSummary.accuracy}% accuracy
-                  </p>
-                </article>
-                <article className="rounded-[22px] border border-amber-200 bg-white/90 p-4">
-                  <p className="eyebrow">Cloud snapshot</p>
-                  <p className="mt-2 text-sm text-slate-800">
-                    {cloudSyncSummary.known} known, {cloudSyncSummary.needsPractice} practice, {cloudSyncSummary.reviewedToday} reviewed today
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {cloudSyncSummary.trackedWords} tracked words, daily goal {cloudSyncSummary.dailyGoal}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {cloudSyncSummary.totalCorrect} correct, {cloudSyncSummary.totalWrong} wrong, {cloudSyncSummary.accuracy}% accuracy
-                  </p>
-                </article>
+              <div className="touch-scroll-row mt-4 flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
+                <SnapshotSummaryCard title="This browser snapshot" summary={localSyncSummary} />
+                <SnapshotSummaryCard title="Cloud snapshot" summary={cloudSyncSummary} />
               </div>
 
               {showHistoryMismatchCopy && (
@@ -182,10 +209,10 @@ export const CloudSyncPanel = ({
                 </p>
               )}
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
-                  className="rounded-full bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-full bg-amber-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                   onClick={() => onResolveConflict("overwrite-cloud")}
                   disabled={syncStatus === "saving"}
                 >
@@ -193,7 +220,7 @@ export const CloudSyncPanel = ({
                 </button>
                 <button
                   type="button"
-                  className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                   onClick={() => onResolveConflict("use-cloud")}
                   disabled={syncStatus === "saving"}
                 >
@@ -203,36 +230,37 @@ export const CloudSyncPanel = ({
             </div>
           )}
 
-          <div>
-            {hasSupabaseConfig && session && <p className="text-sm text-slate-600">Signed in as {session.user.email ?? "your account"}.</p>}
-            {!hasSupabaseConfig && <p className="text-sm text-slate-600">Running in local-only mode.</p>}
-          </div>
-
           {hasSupabaseConfig && !session && (
-            <form
-              className="flex w-full flex-col gap-2 sm:flex-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onSendMagicLink();
-              }}
-            >
-              <label htmlFor="sync-email" className="sr-only">
-                Email address for sign-in link
-              </label>
-              <input
-                id="sync-email"
-                type="email"
-                required
-                autoComplete="email"
-                className="text-input text-input-idle"
-                placeholder="you@example.com"
-                value={authEmail}
-                onChange={(event) => onAuthEmailChange(event.target.value)}
-              />
-              <button type="submit" disabled={authBusy} className="action-primary rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-60">
-                {authBusy ? "Sending..." : "Email Link"}
-              </button>
-            </form>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+              <div className="space-y-1">
+                <p className="section-title">Sign in to sync</p>
+                <p className="text-sm text-slate-600">Email yourself a one-time sign-in link for this browser.</p>
+              </div>
+              <form
+                className="mt-3 flex w-full flex-col gap-2 sm:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSendMagicLink();
+                }}
+              >
+                <label htmlFor="sync-email" className="sr-only">
+                  Email address for sign-in link
+                </label>
+                <input
+                  id="sync-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  className="text-input text-input-idle"
+                  placeholder="you@example.com"
+                  value={authEmail}
+                  onChange={(event) => onAuthEmailChange(event.target.value)}
+                />
+                <button type="submit" disabled={authBusy} className="action-primary w-full rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-60 sm:w-auto">
+                  {authBusy ? "Sending..." : "Email Link"}
+                </button>
+              </form>
+            </div>
           )}
 
           {authMessage && (
@@ -245,3 +273,4 @@ export const CloudSyncPanel = ({
     </div>
   );
 };
+
