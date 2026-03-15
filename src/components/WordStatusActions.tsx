@@ -42,10 +42,10 @@ export const WordStatusActions = ({
           </button>
         </div>
         {(known || needsPractice) && (
-          <div className="flex justify-end">
+          <div className="flex">
             <button
               type="button"
-              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              className="action-ghost w-full rounded-full px-4 py-2 text-sm font-semibold min-[380px]:ml-auto min-[380px]:w-auto"
               onClick={() => onSetStatus(word, "clear")}
             >
               Clear status
@@ -56,7 +56,9 @@ export const WordStatusActions = ({
     );
   }
 
-  const baseClass = compact ? "rounded-full px-4 py-2 text-xs font-semibold" : "rounded-full px-3 py-2 text-xs font-semibold";
+  const baseClass = compact
+    ? "min-h-[2.75rem] rounded-full px-4 py-2.5 text-sm font-semibold"
+    : "min-h-[2.75rem] rounded-full px-3.5 py-2.5 text-sm font-semibold";
 
   return (
     <div className={`flex flex-wrap gap-2 ${compact ? "mt-3" : ""}`}>

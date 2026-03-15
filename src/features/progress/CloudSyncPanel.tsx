@@ -105,7 +105,6 @@ export const CloudSyncPanel = ({
   );
   const showHistoryMismatchCopy = syncConflict?.mode === "different-data" && summariesMatch;
   const sessionEmail = session?.user.email?.trim() ?? "";
-  const compactEmail = sessionEmail.length > 28 ? `${sessionEmail.slice(0, 28)}...` : sessionEmail;
   const connectionLabel = !hasSupabaseConfig ? "Local only" : session ? "Signed in" : "Signed out";
   const connectionMetaLabel = !hasSupabaseConfig
     ? "Configure Supabase to enable cloud sync."
@@ -115,7 +114,7 @@ export const CloudSyncPanel = ({
   const mobileConnectionMeta = !hasSupabaseConfig
     ? "Add Supabase config to enable sync."
     : session
-      ? compactEmail || "Ready on this browser."
+      ? sessionEmail || "Ready on this browser."
       : "Send a one-time link to sync here.";
   const conflictDescription = syncConflict?.mode === "cloud-empty"
     ? "Choose whether to upload this browser snapshot to the cloud or discard it and keep the empty cloud state."
@@ -150,7 +149,7 @@ export const CloudSyncPanel = ({
             <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">Last synced: {lastSyncedLabel}</span>
             <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">{connectionLabel}</span>
           </div>
-          <p className="max-w-full truncate text-xs text-slate-500 md:hidden" title={sessionEmail || undefined}>
+          <p className="max-w-full break-all text-xs leading-5 text-slate-500 md:hidden" title={sessionEmail || undefined}>
             {mobileConnectionMeta}
           </p>
           <p className="hidden text-xs text-slate-500 md:block">{connectionMetaLabel}</p>

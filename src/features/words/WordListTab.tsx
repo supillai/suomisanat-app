@@ -177,7 +177,7 @@ export const WordListTab = ({
             ))}
             <button
               type="button"
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              className="action-ghost shrink-0 rounded-full px-4 py-2 text-sm font-semibold"
               onClick={clearFilters}
             >
               Clear all
@@ -298,7 +298,7 @@ export const WordListTab = ({
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    className="action-ghost rounded-full px-4 py-2 text-sm font-semibold"
                     aria-expanded={detailsOpen}
                     aria-controls={detailId}
                     onClick={() => toggleWordDetails(word.id)}
