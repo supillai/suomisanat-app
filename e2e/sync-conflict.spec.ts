@@ -1,4 +1,4 @@
-﻿import { expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { installMockCloudSync } from "./support/mockCloudSync";
 
@@ -14,7 +14,7 @@ const waitForMockConflictState = async (page: Page): Promise<void> => {
   });
 };
 
-test("cloud sync conflict can be resolved in favor of cloud data", async ({ page }) => {
+test("cloud sync conflict can be resolved in favor of cloud data", async ({ page }, testInfo) => {
   await installMockCloudSync(page, {
     session: {
       user: {
@@ -53,7 +53,7 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   await waitForMockConflictState(page);
 
   const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toContainText("Action needed", { timeout: 10000 });
+  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Action needed/, { timeout: 10000 });
   await syncButton.click();
 
   await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
@@ -67,15 +67,20 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   await expect(snapshotCards.nth(1)).toContainText("1 practice");
   await expect(snapshotCards.nth(1)).toContainText("Today 0");
 
+  const knownBadge = testInfo.project.use.isMobile
+    ? page.getByText(/^Known[: ]\s*0\/\d+/).first()
+    : page.getByText(/^Known[: ]\s*0\/\d+/).last();
+
   await page.getByRole("button", { name: "Replace Browser with Cloud" }).click();
 
-  await expect(syncButton).toContainText("Up to date");
-  await expect(page.getByText(/^Known:/)).toContainText(/0\/\d+/);
+  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Up to date/);
+  await expect(knownBadge).toBeVisible();
+  await page.getByRole("tab", { name: "Progress" }).click();
   await expect(page.getByLabel("Daily goal")).toHaveValue("30");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 });
 
-test("cloud sync conflict can import browser data into the cloud", async ({ page }) => {
+test("cloud sync conflict can import browser data into the cloud", async ({ page }, testInfo) => {
   await installMockCloudSync(page, {
     session: {
       user: {
@@ -114,15 +119,20 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   await waitForMockConflictState(page);
 
   const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toContainText("Action needed", { timeout: 10000 });
+  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Action needed/, { timeout: 10000 });
   await syncButton.click();
 
   await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
 
+  const knownBadge = testInfo.project.use.isMobile
+    ? page.getByText(/^Known[: ]\s*1\/\d+/).first()
+    : page.getByText(/^Known[: ]\s*1\/\d+/).last();
+
   await page.getByRole("button", { name: "Overwrite Cloud with Browser" }).click();
 
-  await expect(syncButton).toContainText("Up to date");
-  await expect(page.getByText(/^Known:/)).toContainText(/1\/\d+/);
+  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Up to date/);
+  await expect(knownBadge).toBeVisible();
+  await page.getByRole("tab", { name: "Progress" }).click();
   await expect(page.getByLabel("Daily goal")).toHaveValue("15");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 

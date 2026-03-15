@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { AppHeader } from "./features/app/AppHeader";
 import { AppStateProvider, useAppState } from "./features/app/AppStateContext";
 import { useWordDataset } from "./features/app/useWordDataset";
+import { CloudSyncPanel } from "./features/progress/CloudSyncPanel";
+import type { CloudSyncState } from "./features/sync/useCloudSync";
 
 const StudyTabScreen = lazy(() => import("./features/study/StudyTabScreen"));
 const QuizTabScreen = lazy(() => import("./features/quiz/QuizTabScreen"));
@@ -62,8 +64,45 @@ const DatasetStateCard = ({
   </AppFrame>
 );
 
+const CloudSyncDetails = ({ cloudSync }: { cloudSync: CloudSyncState }) => (
+  <div className="mb-4">
+    <CloudSyncPanel
+      isExpanded={cloudSync.showCloudSync}
+      syncBadgeClass={cloudSync.syncBadgeClass}
+      syncBadgeLabel={cloudSync.syncBadgeLabel}
+      syncMessage={cloudSync.syncMessage}
+      lastSyncedLabel={cloudSync.lastSyncedLabel}
+      canManualSync={cloudSync.canManualSync}
+      hasSupabaseConfig={cloudSync.hasSupabaseConfig}
+      session={cloudSync.session}
+      authBusy={cloudSync.authBusy}
+      authEmail={cloudSync.authEmail}
+      authMessage={cloudSync.authMessage}
+      syncStatus={cloudSync.syncStatus}
+      syncError={cloudSync.syncError}
+      syncConflict={cloudSync.syncConflict}
+      localSyncSummary={cloudSync.localSyncSummary}
+      cloudSyncSummary={cloudSync.cloudSyncSummary}
+      onHide={cloudSync.hideCloudSync}
+      onSyncNow={() => {
+        void cloudSync.flushSyncNow();
+      }}
+      onSignOut={() => {
+        void cloudSync.signOut();
+      }}
+      onResolveConflict={(choice) => {
+        void cloudSync.resolveSyncConflict(choice);
+      }}
+      onAuthEmailChange={cloudSync.setAuthEmail}
+      onSendMagicLink={() => {
+        void cloudSync.sendMagicLink();
+      }}
+    />
+  </div>
+);
+
 const AppShell = () => {
-  const { tab, setTab, progressStore, cloudSync, openCloudSyncSettings } = useAppState();
+  const { tab, setTab, progressStore, cloudSync } = useAppState();
 
   return (
     <AppFrame>
@@ -74,9 +113,12 @@ const AppShell = () => {
         reviewedToday={progressStore.stats.reviewedToday}
         syncBadgeLabel={cloudSync.syncBadgeLabel}
         syncBadgeClass={cloudSync.syncBadgeClass}
+        isCloudSyncOpen={cloudSync.showCloudSync}
         onTabChange={setTab}
-        onOpenCloudSync={openCloudSyncSettings}
+        onOpenCloudSync={cloudSync.openCloudSync}
       />
+
+      {cloudSync.showCloudSync && <CloudSyncDetails cloudSync={cloudSync} />}
 
       <Suspense fallback={<TabLoadingCard label={tab === "list" ? "Word List" : tab.charAt(0).toUpperCase() + tab.slice(1)} />}>
         {tab === "study" && <StudyTabScreen />}
@@ -119,6 +161,7 @@ export default function App() {
     </AppStateProvider>
   );
 }
+
 
 
 

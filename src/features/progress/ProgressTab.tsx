@@ -1,4 +1,3 @@
-import { CloudSyncPanel } from "./CloudSyncPanel";
 import { tabButtonId, tabPanelId } from "../app/app.constants";
 import type { CloudSyncState } from "../sync/useCloudSync";
 import type { MiniDrillRecommendation } from "../quiz/quiz.utils";
@@ -53,44 +52,7 @@ export const ProgressTab = ({
         )}
       </div>
 
-      {cloudSync.showCloudSync && (
-        <div className="mt-5">
-          <CloudSyncPanel
-            isExpanded={cloudSync.showCloudSync}
-            syncBadgeClass={cloudSync.syncBadgeClass}
-            syncBadgeLabel={cloudSync.syncBadgeLabel}
-            syncMessage={cloudSync.syncMessage}
-            lastSyncedLabel={cloudSync.lastSyncedLabel}
-            canManualSync={cloudSync.canManualSync}
-            hasSupabaseConfig={cloudSync.hasSupabaseConfig}
-            session={cloudSync.session}
-            authBusy={cloudSync.authBusy}
-            authEmail={cloudSync.authEmail}
-            authMessage={cloudSync.authMessage}
-            syncStatus={cloudSync.syncStatus}
-            syncError={cloudSync.syncError}
-            syncConflict={cloudSync.syncConflict}
-            localSyncSummary={cloudSync.localSyncSummary}
-            cloudSyncSummary={cloudSync.cloudSyncSummary}
-            onHide={cloudSync.hideCloudSync}
-            onSyncNow={() => {
-              void cloudSync.flushSyncNow();
-            }}
-            onSignOut={() => {
-              void cloudSync.signOut();
-            }}
-            onResolveConflict={(choice) => {
-              void cloudSync.resolveSyncConflict(choice);
-            }}
-            onAuthEmailChange={cloudSync.setAuthEmail}
-            onSendMagicLink={() => {
-              void cloudSync.sendMagicLink();
-            }}
-          />
-        </div>
-      )}
-
-      <div className={`grid grid-cols-2 gap-3 md:grid-cols-4 ${cloudSync.showCloudSync ? "mt-5" : "mt-6"}`}>
+      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <article className="metric-card">
           <p className="metric-label">Known Words</p>
           <p className="metric-value">{knownCount}</p>

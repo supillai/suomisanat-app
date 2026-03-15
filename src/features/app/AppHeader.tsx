@@ -10,6 +10,7 @@ type AppHeaderProps = {
   reviewedToday: number;
   syncBadgeLabel: string;
   syncBadgeClass: string;
+  isCloudSyncOpen: boolean;
   onTabChange: (tab: Tab) => void;
   onOpenCloudSync: () => void;
 };
@@ -38,6 +39,7 @@ export const AppHeader = ({
   reviewedToday,
   syncBadgeLabel,
   syncBadgeClass,
+  isCloudSyncOpen,
   onTabChange,
   onOpenCloudSync
 }: AppHeaderProps) => {
@@ -84,6 +86,8 @@ export const AppHeader = ({
               <button
                 type="button"
                 aria-label={`Sync: ${syncBadgeLabel}`}
+                aria-controls="cloud-sync-panel"
+                aria-expanded={isCloudSyncOpen}
                 className={`inline-flex h-10 w-[7.75rem] shrink-0 items-center justify-center overflow-hidden rounded-full border px-3.5 py-2 text-xs font-semibold leading-none md:hidden ${syncBadgeClass}`}
                 onClick={onOpenCloudSync}
               >
@@ -104,7 +108,14 @@ export const AppHeader = ({
           </div>
 
           <div className="hero-badges hidden shrink-0 flex-wrap items-center gap-2 md:flex">
-            <button type="button" className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold ${syncBadgeClass}`} onClick={onOpenCloudSync}>
+            <button
+              type="button"
+              aria-label={`Sync: ${syncBadgeLabel}`}
+              aria-controls="cloud-sync-panel"
+              aria-expanded={isCloudSyncOpen}
+              className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold ${syncBadgeClass}`}
+              onClick={onOpenCloudSync}
+            >
               Sync: {syncBadgeLabel}
             </button>
             <div className="inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/20">

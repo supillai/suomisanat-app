@@ -1,4 +1,4 @@
-﻿import { createContext, startTransition, useContext, useState } from "react";
+import { createContext, startTransition, useContext, useState } from "react";
 import type { PropsWithChildren } from "react";
 import type { VocabularyWord } from "../../types";
 import { useProgressStore } from "../progress/useProgressStore";
@@ -22,7 +22,6 @@ type AppState = {
   quizSession: QuizSession;
   wordFilters: WordFilters;
   cloudSync: CloudSyncState;
-  openCloudSyncSettings: () => void;
   startMiniDrill: () => void;
 };
 
@@ -62,11 +61,6 @@ export const AppStateProvider = ({ words, children }: AppStateProviderProps) => 
     });
   };
 
-  const openCloudSyncSettings = (): void => {
-    cloudSync.openCloudSync();
-    setTab("progress");
-  };
-
   const startMiniDrill = (): void => {
     quizSession.startMiniDrill();
     setTab("quiz");
@@ -81,7 +75,6 @@ export const AppStateProvider = ({ words, children }: AppStateProviderProps) => 
     quizSession,
     wordFilters,
     cloudSync,
-    openCloudSyncSettings,
     startMiniDrill
   };
 
