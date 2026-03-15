@@ -3,6 +3,7 @@ import { tabButtonId, tabPanelId } from "../app/app.constants";
 import type { QuizMode } from "../app/app.types";
 import type { VocabularyWord } from "../../types";
 import { useFinePointer } from "../../utils/useFinePointer";
+import { useKeyboardMode } from "../../utils/useKeyboardMode";
 
 type QuizTabProps = {
   quizMode: QuizMode;
@@ -60,6 +61,7 @@ export const QuizTab = ({
   const quizTypingInputRef = useRef<HTMLInputElement | null>(null);
   const quizNextButtonRef = useRef<HTMLButtonElement | null>(null);
   const supportsKeyboardUI = useFinePointer();
+  const keyboardMode = useKeyboardMode();
   const scoreLabel = `${quizCorrect} correct / ${quizWrong} wrong`;
   const compactScoreLabel = `${quizCorrect}/${quizWrong}`;
   const nextQuizLabel = miniDrillLastQuestion
@@ -78,7 +80,7 @@ export const QuizTab = ({
       : "Skip";
 
   useEffect(() => {
-    if (!supportsKeyboardUI) return;
+    if (!supportsKeyboardUI || !keyboardMode) return;
 
     const target = isAnswered ? quizNextButtonRef.current : quizMode === "typing" ? quizTypingInputRef.current : quizFirstOptionRef.current;
     if (!target) return;
@@ -88,7 +90,7 @@ export const QuizTab = ({
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [isAnswered, quizMode, quizWord.id, supportsKeyboardUI]);
+  }, [isAnswered, keyboardMode, quizMode, quizWord.id, supportsKeyboardUI]);
 
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (miniDrillActive && event.key === "Escape") {
@@ -329,3 +331,4 @@ export const QuizTab = ({
     </section>
   );
 };
+

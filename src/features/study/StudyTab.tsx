@@ -4,6 +4,7 @@ import type { StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
 import type { VocabularyWord } from "../../types";
 import { useFinePointer } from "../../utils/useFinePointer";
+import { useKeyboardMode } from "../../utils/useKeyboardMode";
 
 type StudyTabProps = {
   studyFilter: StudyFilter;
@@ -75,6 +76,7 @@ export const StudyTab = ({
   const studyNextButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showMobileExample, setShowMobileExample] = useState(false);
   const supportsKeyboardUI = useFinePointer();
+  const keyboardMode = useKeyboardMode();
   const cardsInModeLabel = `${studyPool.length} ${studyPool.length === 1 ? "card" : "cards"}`;
   const showHintCounter = !reveal && studyHintLevel > 0;
   const examplePanelId = `study-example-${studyWord.id}`;
@@ -85,7 +87,7 @@ export const StudyTab = ({
   }, [reveal, studyWord.id]);
 
   useEffect(() => {
-    if (!supportsKeyboardUI) return;
+    if (!supportsKeyboardUI || !keyboardMode) return;
 
     const target = !reveal
       ? studyRevealButtonRef.current
@@ -99,7 +101,7 @@ export const StudyTab = ({
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [reveal, studyDecision, studyWord.id, supportsKeyboardUI]);
+  }, [keyboardMode, reveal, studyDecision, studyWord.id, supportsKeyboardUI]);
 
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) return;
@@ -268,8 +270,8 @@ export const StudyTab = ({
       </div>
 
       {!reveal && (
-        <div className="study-actions mt-4 flex flex-col gap-3">
-          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 sm:max-w-xl">
+        <div className="study-actions mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
+          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
             <button ref={studyRevealButtonRef} className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
               Reveal Meaning
             </button>
@@ -281,15 +283,18 @@ export const StudyTab = ({
               {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
             </button>
           </div>
-          <button className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start" onClick={onNextStudyWord}>
+          <button
+            className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
+            onClick={onNextStudyWord}
+          >
             Skip for Now
           </button>
         </div>
       )}
 
       {reveal && studyDecision === "none" && (
-        <div className="study-actions mt-4 flex flex-col gap-3">
-          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 sm:max-w-xl">
+        <div className="study-actions mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
+          <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
             <button ref={studyKnownButtonRef} className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
               Mark Known
             </button>
@@ -297,22 +302,31 @@ export const StudyTab = ({
               Needs Practice
             </button>
           </div>
-          <button className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start" onClick={onNextStudyWord}>
+          <button
+            className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
+            onClick={onNextStudyWord}
+          >
             Skip Without Saving
           </button>
         </div>
       )}
 
       {reveal && studyDecision !== "none" && (
-        <div className="mt-4">
+        <div className="mt-4 mx-auto max-w-2xl">
           <div className={`feedback-panel rounded-3xl p-4 ${studyDecision === "known" ? "feedback-panel-correct" : "feedback-panel-warning"}`}>
             <p className="text-sm font-semibold text-ink" role="status" aria-live="polite">
               {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
             </p>
           </div>
-          <button ref={studyNextButtonRef} className="action-primary mt-3 w-full rounded-full px-5 py-3 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
-            Next Card
-          </button>
+          <div className="mt-3 flex justify-center">
+            <button
+              ref={studyNextButtonRef}
+              className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold sm:min-w-[12rem] sm:w-auto"
+              onClick={onNextStudyWord}
+            >
+              Next Card
+            </button>
+          </div>
         </div>
       )}
 
@@ -409,3 +423,4 @@ export const StudyTab = ({
     </section>
   );
 };
+
