@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient, hasSupabaseConfig } from "../../lib/supabase";
@@ -59,12 +59,13 @@ export const useCloudSync = ({
   replaceSnapshot,
   localSyncSummary
 }: UseCloudSyncOptions): CloudSyncState => {
+  const supabaseConfigured = hasSupabaseConfig();
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [showCloudSync, setShowCloudSync] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(hasSupabaseConfig() ? "loading" : "idle");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(supabaseConfigured ? "loading" : "idle");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasHydratedServer, setHasHydratedServer] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -243,6 +244,8 @@ export const useCloudSync = ({
   };
 
   useEffect(() => {
+    if (!supabaseConfigured) return;
+
     const client = getSupabaseClient();
     if (!client) return;
 
@@ -278,7 +281,7 @@ export const useCloudSync = ({
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [supabaseConfigured]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -472,7 +475,6 @@ export const useCloudSync = ({
     [syncConflict]
   );
 
-  const supabaseConfigured = hasSupabaseConfig();
 
   const syncBadgeLabel = !supabaseConfigured
     ? "Local only"
@@ -550,6 +552,8 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
+
+
 
 
 

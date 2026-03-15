@@ -1,5 +1,18 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { installMockCloudSync } from "./support/mockCloudSync";
+
+const waitForMockConflictState = async (page: Page): Promise<void> => {
+  await page.waitForFunction(() => {
+    const state = (window as Window & {
+      __SUOMISANAT_E2E_SYNC_STATE__?: {
+        session?: { user?: { id?: string } } | null;
+      };
+    }).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    return state?.session?.user?.id === "user-1";
+  });
+};
 
 test("cloud sync conflict can be resolved in favor of cloud data", async ({ page }) => {
   await installMockCloudSync(page, {
@@ -37,14 +50,22 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   });
 
   await page.goto("/");
+  await waitForMockConflictState(page);
 
   const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toBeVisible();
+  await expect(syncButton).toContainText("Action needed", { timeout: 10000 });
   await syncButton.click();
 
   await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("1 known, 0 practice, 0 reviewed today")).toBeVisible();
-  await expect(page.getByText("0 known, 1 practice, 0 reviewed today")).toBeVisible();
+
+  const snapshotCards = page.locator("#cloud-sync-panel article");
+  await expect(snapshotCards).toHaveCount(2);
+  await expect(snapshotCards.nth(0)).toContainText("1 known");
+  await expect(snapshotCards.nth(0)).toContainText("0 practice");
+  await expect(snapshotCards.nth(0)).toContainText("Today 0");
+  await expect(snapshotCards.nth(1)).toContainText("0 known");
+  await expect(snapshotCards.nth(1)).toContainText("1 practice");
+  await expect(snapshotCards.nth(1)).toContainText("Today 0");
 
   await page.getByRole("button", { name: "Replace Browser with Cloud" }).click();
 
@@ -90,9 +111,10 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   });
 
   await page.goto("/");
+  await waitForMockConflictState(page);
 
   const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toBeVisible();
+  await expect(syncButton).toContainText("Action needed", { timeout: 10000 });
   await syncButton.click();
 
   await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
@@ -148,3 +170,4 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   expect(cloudState?.progressWrites).toEqual([expect.objectContaining({ word_id: 1, known: true, needs_practice: false })]);
   expect(cloudState?.settingsWrites).toContain(15);
 });
+
