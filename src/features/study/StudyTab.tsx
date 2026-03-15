@@ -281,7 +281,7 @@ export const StudyTab = ({
               {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
             </button>
           </div>
-          <button className="action-ghost w-full rounded-full px-4 py-2 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
+          <button className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start" onClick={onNextStudyWord}>
             Skip for Now
           </button>
         </div>
@@ -297,7 +297,7 @@ export const StudyTab = ({
               Needs Practice
             </button>
           </div>
-          <button className="action-ghost w-full rounded-full px-4 py-2 text-sm font-semibold sm:w-auto" onClick={onNextStudyWord}>
+          <button className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start" onClick={onNextStudyWord}>
             Skip Without Saving
           </button>
         </div>
