@@ -77,8 +77,8 @@ const progressStatesEqual = (first: ProgressState | undefined, second: ProgressS
     safeInt(first.correct) === safeInt(second.correct) &&
     safeInt(first.wrong) === safeInt(second.wrong) &&
     Boolean(first.known) === Boolean(second.known) &&
-    (Boolean(first.known) ? false : Boolean(first.needsPractice)) ===
-      (Boolean(second.known) ? false : Boolean(second.needsPractice)) &&
+    (first.known ? false : Boolean(first.needsPractice)) ===
+      (second.known ? false : Boolean(second.needsPractice)) &&
     (first.lastReviewed ?? null) === (second.lastReviewed ?? null)
   );
 };
@@ -162,3 +162,5 @@ export const formatSyncTimestamp = (value: string | null): string => {
     minute: "2-digit"
   }).format(parsed);
 };
+
+

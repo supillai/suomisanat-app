@@ -8,7 +8,6 @@ import { hasTrackedProgress, summarizeProgress } from "../progress/progress.util
 import type { ProgressSummary } from "../progress/progress.utils";
 import {
   formatSyncTimestamp,
-  mergeProgressMaps,
   progressMapsEqual,
   toProgressMapFromRows,
   toProgressUpserts,
@@ -196,15 +195,29 @@ export const useCloudSync = ({
     const userId = session?.user.id;
     if (!client || !userId || !syncConflict) return;
 
-    const nextProgress =
-      choice === "local" ? mergeProgressMaps(progressMapRef.current, syncConflict.serverProgress) : syncConflict.serverProgress;
+    const nextProgress = choice === "local" ? progressMapRef.current : syncConflict.serverProgress;
     const nextDailyGoal = choice === "local" ? dailyGoalRef.current : syncConflict.serverDailyGoal;
 
     setSyncStatus("saving");
     setSyncError(null);
 
     if (choice === "local") {
+      const localWordIds = new Set(Object.keys(nextProgress).map((value) => Number(value)).filter((value) => Number.isFinite(value)));
+      const serverWordIds = Object.keys(syncConflict.serverProgress)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+      const wordIdsToDelete = serverWordIds.filter((wordId) => !localWordIds.has(wordId));
       const progressRows = toProgressUpserts(userId, nextProgress);
+
+      if (wordIdsToDelete.length > 0) {
+        const deleteResponse = await client.from("user_progress").delete().eq("user_id", userId).in("word_id", wordIdsToDelete);
+        if (deleteResponse.error) {
+          setSyncStatus("error");
+          setSyncError(deleteResponse.error.message);
+          return;
+        }
+      }
+
       const [progressResponse, settingsResponse] = await Promise.all([
         progressRows.length > 0
           ? client.from("user_progress").upsert(progressRows, { onConflict: "user_id,word_id" })
@@ -368,7 +381,7 @@ export const useCloudSync = ({
     }
 
     scheduleSyncFlush("progress");
-  }, [hasHydratedServer, progressMap, session?.user.id]);
+  }, [hasHydratedServer, progressMap, scheduleSyncFlush, session?.user.id]);
 
   useEffect(() => {
     const client = supabase;
@@ -383,7 +396,7 @@ export const useCloudSync = ({
     }
 
     scheduleSyncFlush("settings");
-  }, [dailyGoal, hasHydratedServer, session?.user.id]);
+  }, [dailyGoal, hasHydratedServer, scheduleSyncFlush, session?.user.id]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -533,4 +546,9 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
+
+
+
+
+
 

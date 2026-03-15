@@ -145,7 +145,7 @@ export const CloudSyncPanel = ({
                     ? "This browser has progress that is not in Supabase yet."
                     : showHistoryMismatchCopy
                       ? "Known counts and totals match, but some per-word review history is different. Choose which source to keep."
-                      : "Choose whether to import what is stored in this browser or replace it with the current cloud data."}
+                      : "Choose whether this browser should replace the cloud data or whether the current cloud data should replace this browser."}
                 </p>
               </div>
 
