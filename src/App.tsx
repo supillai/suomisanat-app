@@ -10,7 +10,7 @@ const WordListTabScreen = lazy(() => import("./features/words/WordListTabScreen"
 const ProgressTabScreen = lazy(() => import("./features/progress/ProgressTabScreen"));
 
 const AppFrame = ({ children }: { children: ReactNode }) => (
-  <div className="app-frame min-h-dvh px-4 py-4 md:px-8 md:py-5">
+  <div className="app-frame px-4 py-4 md:px-8 md:py-5">
     <div className="mx-auto max-w-6xl">{children}</div>
   </div>
 );
@@ -119,6 +119,7 @@ export default function App() {
     </AppStateProvider>
   );
 }
+
 
 
 
