@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseConfig, supabase } from "../../lib/supabase";
@@ -110,14 +110,26 @@ export const useCloudSync = ({
     }
   }, [syncConflict]);
 
-  const applyHydratedState = (nextProgress: ProgressMap, nextDailyGoal: number): void => {
+  const applyHydratedState = useCallback((nextProgress: ProgressMap, nextDailyGoal: number): void => {
     skipNextProgressSyncRef.current = true;
     skipNextSettingsSyncRef.current = true;
     replaceSnapshot(nextProgress, nextDailyGoal);
     setHasHydratedServer(true);
     setLastSyncedAt(new Date().toISOString());
     setSyncStatus("synced");
-  };
+  }, [replaceSnapshot]);
+
+  useEffect(() => {
+    if (!syncConflict) return;
+
+    const localMatchesServer =
+      progressMapsEqual(progressMap, syncConflict.serverProgress) && dailyGoal === syncConflict.serverDailyGoal;
+
+    if (!localMatchesServer) return;
+
+    setSyncConflict(null);
+    applyHydratedState(syncConflict.serverProgress, syncConflict.serverDailyGoal);
+  }, [applyHydratedState, dailyGoal, progressMap, syncConflict]);
 
   const flushSyncNow = async (): Promise<void> => {
     const client = supabase;
@@ -341,7 +353,7 @@ export const useCloudSync = ({
     return () => {
       cancelled = true;
     };
-  }, [dailyGoalRef, progressMapRef, replaceSnapshot, session?.user.id]);
+  }, [applyHydratedState, dailyGoalRef, progressMapRef, session?.user.id]);
 
   useEffect(() => {
     const client = supabase;
@@ -521,3 +533,4 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
+

@@ -10,6 +10,9 @@ export type ProgressSummary = {
   needsPractice: number;
   reviewedToday: number;
   dailyGoal: number;
+  totalCorrect: number;
+  totalWrong: number;
+  accuracy: number;
 };
 
 export type ProgressStats = {
@@ -105,13 +108,19 @@ export const hasTrackedProgress = (map: ProgressMap): boolean => Object.keys(map
 
 export const summarizeProgress = (map: ProgressMap, dailyGoal: number): ProgressSummary => {
   const states = Object.values(map);
+  const totalCorrect = states.reduce((sum, state) => sum + safeInt(state.correct), 0);
+  const totalWrong = states.reduce((sum, state) => sum + safeInt(state.wrong), 0);
+  const totalAnswers = totalCorrect + totalWrong;
 
   return {
     trackedWords: states.length,
     known: states.filter((state) => state.known).length,
     needsPractice: states.filter((state) => state.needsPractice).length,
     reviewedToday: states.filter((state) => state.lastReviewed === todayIso()).length,
-    dailyGoal
+    dailyGoal,
+    totalCorrect,
+    totalWrong,
+    accuracy: totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : 0
   };
 };
 
@@ -141,3 +150,4 @@ export const buildProgressStats = (
     goalPct
   };
 };
+

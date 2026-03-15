@@ -51,6 +51,19 @@ export const CloudSyncPanel = ({
   onAuthEmailChange,
   onSendMagicLink
 }: CloudSyncPanelProps) => {
+  const summariesMatch = Boolean(
+    syncConflict &&
+      cloudSyncSummary &&
+      localSyncSummary.trackedWords === cloudSyncSummary.trackedWords &&
+      localSyncSummary.known === cloudSyncSummary.known &&
+      localSyncSummary.needsPractice === cloudSyncSummary.needsPractice &&
+      localSyncSummary.reviewedToday === cloudSyncSummary.reviewedToday &&
+      localSyncSummary.dailyGoal === cloudSyncSummary.dailyGoal &&
+      localSyncSummary.totalCorrect === cloudSyncSummary.totalCorrect &&
+      localSyncSummary.totalWrong === cloudSyncSummary.totalWrong
+  );
+  const showHistoryMismatchCopy = syncConflict?.mode === "conflict" && summariesMatch;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -121,12 +134,18 @@ export const CloudSyncPanel = ({
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-amber-950">
-                  {syncConflict.mode === "import" ? "Import browser data to cloud?" : "Browser and cloud data differ"}
+                  {syncConflict.mode === "import"
+                    ? "Import browser data to cloud?"
+                    : showHistoryMismatchCopy
+                      ? "Overall totals match, but word history differs"
+                      : "Browser and cloud data differ"}
                 </p>
                 <p className="text-xs text-amber-900">
                   {syncConflict.mode === "import"
                     ? "This browser has progress that is not in Supabase yet."
-                    : "Choose whether to import what is stored in this browser or replace it with the current cloud data."}
+                    : showHistoryMismatchCopy
+                      ? "Known counts and totals match, but some per-word review history is different. Choose which source to keep."
+                      : "Choose whether to import what is stored in this browser or replace it with the current cloud data."}
                 </p>
               </div>
 
@@ -139,6 +158,9 @@ export const CloudSyncPanel = ({
                   <p className="text-xs text-slate-600">
                     {localSyncSummary.trackedWords} tracked words, daily goal {localSyncSummary.dailyGoal}
                   </p>
+                  <p className="text-xs text-slate-600">
+                    {localSyncSummary.totalCorrect} correct, {localSyncSummary.totalWrong} wrong, {localSyncSummary.accuracy}% accuracy
+                  </p>
                 </article>
                 <article className="rounded-xl border border-amber-200 bg-white/80 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Cloud</p>
@@ -148,8 +170,17 @@ export const CloudSyncPanel = ({
                   <p className="text-xs text-slate-600">
                     {cloudSyncSummary.trackedWords} tracked words, daily goal {cloudSyncSummary.dailyGoal}
                   </p>
+                  <p className="text-xs text-slate-600">
+                    {cloudSyncSummary.totalCorrect} correct, {cloudSyncSummary.totalWrong} wrong, {cloudSyncSummary.accuracy}% accuracy
+                  </p>
                 </article>
               </div>
+
+              {showHistoryMismatchCopy && (
+                <p className="mt-3 text-xs text-amber-900">
+                  This usually means the same totals are attached to different words or review dates, so the cloud sync still needs a choice.
+                </p>
+              )}
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
@@ -220,3 +251,4 @@ export const CloudSyncPanel = ({
     </div>
   );
 };
+
