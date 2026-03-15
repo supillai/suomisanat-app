@@ -37,11 +37,5 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-hooks/set-state-in-effect": "off"
     }
-  },
-  {
-    files: ["src/features/sync/useCloudSync.ts"],
-    rules: {
-      "react-hooks/exhaustive-deps": "off"
-    }
   }
 );

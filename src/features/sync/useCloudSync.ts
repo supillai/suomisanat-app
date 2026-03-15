@@ -130,7 +130,7 @@ export const useCloudSync = ({
     applyHydratedState(syncConflict.serverProgress, syncConflict.serverDailyGoal);
   }, [applyHydratedState, dailyGoal, progressMap, syncConflict]);
 
-  const flushSyncNow = async (): Promise<void> => {
+  const flushSyncNow = useCallback(async (): Promise<void> => {
     const client = supabase;
     const userId = sessionRef.current?.user.id;
     if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current || syncConflictRef.current) return;
@@ -178,9 +178,9 @@ export const useCloudSync = ({
     } finally {
       flushSyncInFlightRef.current = false;
     }
-  };
+  }, [dailyGoalRef, progressMapRef]);
 
-  const scheduleSyncFlush = (kind: "progress" | "settings"): void => {
+  const scheduleSyncFlush = useCallback((kind: "progress" | "settings"): void => {
     if (progressSaveTimerRef.current !== null || settingsSaveTimerRef.current !== null) return;
 
     const timerRef = kind === "progress" ? progressSaveTimerRef : settingsSaveTimerRef;
@@ -188,7 +188,7 @@ export const useCloudSync = ({
       timerRef.current = null;
       void flushSyncNow();
     }, SYNC_DEBOUNCE_MS);
-  };
+  }, [flushSyncNow]);
 
   const resolveSyncConflict = async (choice: "local" | "cloud"): Promise<void> => {
     const client = supabase;
@@ -418,7 +418,7 @@ export const useCloudSync = ({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, []);
+  }, [flushSyncNow]);
 
   const sendMagicLink = async (): Promise<void> => {
     if (!supabase || authBusy) return;
@@ -546,9 +546,3 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
-
-
-
-
-
-

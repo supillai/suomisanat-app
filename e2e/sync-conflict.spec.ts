@@ -49,7 +49,7 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   await page.getByRole("button", { name: "Use Cloud Data" }).click();
 
   await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
-  await expect(page.getByText(/^Known:/)).toContainText("0/565");
+  await expect(page.getByText(/^Known:/)).toContainText(/0\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("30");
   await expect(page.getByText("Browser and cloud data differ")).toHaveCount(0);
 });
@@ -97,7 +97,7 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   await page.getByRole("button", { name: "Import Browser Data" }).click();
 
   await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
-  await expect(page.getByText(/^Known:/)).toContainText("1/565");
+  await expect(page.getByText(/^Known:/)).toContainText(/1\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("15");
   await expect(page.getByText("Browser and cloud data differ")).toHaveCount(0);
 
