@@ -14,6 +14,23 @@ type AppHeaderProps = {
   onOpenCloudSync: () => void;
 };
 
+const getMobileSyncBadgeLabel = (label: string): string => {
+  switch (label) {
+    case "Local only":
+      return "Local";
+    case "Signed out":
+      return "Offline";
+    case "Action needed":
+      return "Review";
+    case "Up to date":
+      return "Synced";
+    case "Idle":
+      return "Ready";
+    default:
+      return label;
+  }
+};
+
 export const AppHeader = ({
   tab,
   totalWords,
@@ -30,6 +47,7 @@ export const AppHeader = ({
     list: null,
     progress: null
   });
+  const mobileSyncBadgeLabel = getMobileSyncBadgeLabel(syncBadgeLabel);
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number): void => {
     let nextIndex = currentIndex;
@@ -66,10 +84,10 @@ export const AppHeader = ({
               <button
                 type="button"
                 aria-label={`Sync: ${syncBadgeLabel}`}
-                className={`inline-flex max-w-[11rem] items-center rounded-full border px-3.5 py-2 text-xs font-semibold leading-tight md:hidden ${syncBadgeClass}`}
+                className={`inline-flex h-10 w-[7.75rem] shrink-0 items-center justify-center overflow-hidden rounded-full border px-3.5 py-2 text-xs font-semibold leading-none md:hidden ${syncBadgeClass}`}
                 onClick={onOpenCloudSync}
               >
-                Sync: {syncBadgeLabel}
+                <span className="truncate">Sync: {mobileSyncBadgeLabel}</span>
               </button>
             </div>
             <div className="flex flex-wrap gap-2 md:hidden">

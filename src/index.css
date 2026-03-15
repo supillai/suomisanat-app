@@ -109,6 +109,17 @@ button:disabled {
   padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
 }
 
+.app-hero,
+.study-shell,
+.mobile-tab-bar {
+  overflow-anchor: none;
+}
+
+.mobile-tab-bar {
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+}
 .hero-panel {
   background:
     linear-gradient(135deg, rgba(12, 52, 71, 0.94), rgba(17, 115, 107, 0.92)),
@@ -742,3 +753,4 @@ button:disabled {
     margin-top: 0.75rem;
   }
 }
+
