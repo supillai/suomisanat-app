@@ -146,9 +146,9 @@ export const QuizTab = ({
       id={tabPanelId("quiz")}
       role="tabpanel"
       aria-labelledby={tabButtonId("quiz")}
-      className="surface-card rounded-[28px] px-5 py-6 md:px-8 md:py-8"
+      className="surface-card quiz-shell rounded-[28px] px-5 py-5 md:px-7 md:py-6"
     >
-      <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
+      <div className="quiz-toolbar mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Quiz mode">
         <span className="eyebrow">Quiz mode</span>
         <button
           className={`chip-button ${quizMode === "mcq" ? "chip-button-active" : "chip-button-idle"}`}
@@ -174,7 +174,7 @@ export const QuizTab = ({
         {miniDrillActive && <span className="state-pill state-pill-warn">Mini drill {miniDrillProgress}</span>}
       </div>
 
-      <div className="surface-subtle rounded-[26px] p-5 md:p-6">
+      <div className="surface-subtle quiz-card rounded-[26px] p-4 md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="eyebrow">Shortcuts</p>
           <p className="text-xs text-slate-500">1-4 answer, M/T switch mode, N next, Esc exits mini drill</p>
@@ -182,11 +182,11 @@ export const QuizTab = ({
 
         {quizMode === "mcq" && (
           <>
-            <p className="mt-4 text-sm text-slate-600">Pick the English meaning:</p>
-            <h2 className="mt-2 text-3xl font-semibold text-ink md:text-4xl" lang="fi">
+            <p className="mt-3 text-sm text-slate-600">Pick the English meaning:</p>
+            <h2 className="quiz-word mt-1.5 text-3xl font-semibold text-ink md:text-[2.75rem]" lang="fi">
               {quizWord.fi}
             </h2>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="quiz-options mt-4 grid gap-3 sm:grid-cols-2">
               {quizOptions.map((option, index) => {
                 const isCorrectOption = option === quizWord.en;
                 const isSelectedOption = selectedOption === option;
@@ -220,15 +220,15 @@ export const QuizTab = ({
 
         {quizMode === "typing" && (
           <>
-            <p className="mt-4 text-sm text-slate-600">Type the Finnish word:</p>
-            <h2 className="mt-2 text-2xl font-semibold text-ink md:text-3xl">{quizWord.en}</h2>
+            <p className="mt-3 text-sm text-slate-600">Type the Finnish word:</p>
+            <h2 className="quiz-word mt-1.5 text-2xl font-semibold text-ink md:text-[2.4rem]">{quizWord.en}</h2>
             <label htmlFor="quiz-typing-input" className="sr-only">
               Type the Finnish word for {quizWord.en}
             </label>
             <input
               id="quiz-typing-input"
               ref={quizTypingInputRef}
-              className={`text-input mt-4 ${
+              className={`text-input mt-3 ${
                 !isAnswered
                   ? "text-input-idle"
                   : lastAnswerCorrect
@@ -252,7 +252,7 @@ export const QuizTab = ({
             />
             <button
               type="button"
-              className="action-primary mt-3 rounded-full px-5 py-2.5 text-sm font-semibold"
+              className="action-primary mt-2.5 rounded-full px-5 py-2.5 text-sm font-semibold"
               disabled={isAnswered || !typingValue.trim()}
               onClick={onAnswerTyping}
             >
@@ -268,7 +268,7 @@ export const QuizTab = ({
 
         {quizFeedback && (
           <div
-            className={`feedback-panel mt-5 rounded-3xl p-4 ${lastAnswerCorrect ? "feedback-panel-correct" : "feedback-panel-warning"}`}
+            className={`feedback-panel mt-4 rounded-3xl p-4 ${lastAnswerCorrect ? "feedback-panel-correct" : "feedback-panel-warning"}`}
             role="status"
             aria-live="polite"
           >
@@ -278,7 +278,7 @@ export const QuizTab = ({
         )}
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-3">
+      <div className="quiz-actions mt-4 flex flex-wrap gap-3">
         <button
           ref={quizNextButtonRef}
           type="button"
@@ -296,3 +296,4 @@ export const QuizTab = ({
     </section>
   );
 };
+

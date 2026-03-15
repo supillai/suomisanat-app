@@ -51,18 +51,18 @@ export const AppHeader = ({
   };
 
   return (
-    <header className="hero-panel mb-5 rounded-[32px] px-5 py-6 md:px-7 md:py-7">
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
+    <header className="hero-panel app-hero mb-4 rounded-[32px] px-5 py-5 md:px-6 md:py-5">
+      <div className="flex flex-col gap-4">
+        <div className="hero-top flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="hero-copy space-y-1.5">
             <p className="eyebrow text-white/80">Finnish YKI vocabulary trainer</p>
             <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">SuomiSanat</h1>
-            <p className="max-w-2xl text-sm leading-6 text-white/85 md:text-base">
+            <p className="hero-summary max-w-2xl text-sm leading-6 text-white/85 md:text-base">
               Finnish study vocabulary for YKI level 3, with plain-English meanings, easy Finnish clues, offline study, and optional cloud sync.
             </p>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="hero-badges flex shrink-0 flex-wrap items-center gap-2">
             <button type="button" className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold ${syncBadgeClass}`} onClick={onOpenCloudSync}>
               Sync: {syncBadgeLabel}
             </button>
@@ -72,7 +72,7 @@ export const AppHeader = ({
           </div>
         </div>
 
-        <nav className="grid gap-2 sm:grid-cols-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
+        <nav className="hero-nav grid gap-2 sm:grid-cols-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
           {TAB_CONFIG.map((item, index) => (
             <button
               key={item.id}
@@ -97,4 +97,5 @@ export const AppHeader = ({
     </header>
   );
 };
+
 

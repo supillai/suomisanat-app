@@ -143,9 +143,9 @@ export const StudyTab = ({
       id={tabPanelId("study")}
       role="tabpanel"
       aria-labelledby={tabButtonId("study")}
-      className="surface-card rounded-[28px] px-5 py-6 md:px-8 md:py-8"
+      className="surface-card study-shell rounded-[28px] px-5 py-5 md:px-7 md:py-6"
     >
-      <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
+      <div className="study-toolbar mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
         <span className="eyebrow">Study mode</span>
         {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
           <button
@@ -159,21 +159,21 @@ export const StudyTab = ({
         <span className="ml-auto text-sm text-slate-700">Cards in mode: {studyPool.length}</span>
       </div>
 
-      <div className="surface-subtle rounded-[28px] px-5 py-5 text-center md:px-6 md:py-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-left">
+      <div className="surface-subtle study-card rounded-[28px] px-5 py-4 text-center md:px-6 md:py-5">
+        <div className="study-card-top flex flex-wrap items-center justify-between gap-2 text-left">
           <div className="flex flex-wrap gap-2">
             <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
             <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
           </div>
-          <p className="text-xs text-slate-500">Space/Enter reveal, H hint, K known, P practice, N next</p>
+          <p className="study-shortcuts text-xs text-slate-500">Space/Enter reveal, H hint, K known, P practice, N next</p>
         </div>
 
-        <h2 className="mt-5 text-4xl font-semibold tracking-tight text-ink md:text-[3.5rem]" lang="fi">
+        <h2 className="study-word mt-4 text-4xl font-semibold tracking-tight text-ink md:text-[3.25rem]" lang="fi">
           {studyWord.fi}
         </h2>
-        {!reveal && <p className="mt-3 text-sm text-slate-700">Try to recall the meaning before revealing the answer.</p>}
+        {!reveal && <p className="study-prompt mt-2.5 text-sm text-slate-700">Try to recall the meaning before revealing the answer.</p>}
         {!reveal && studyHintLevel > 0 && (
-          <div className="mx-auto mt-4 max-w-2xl space-y-2 text-left">
+          <div className="mx-auto mt-3 max-w-2xl space-y-2 text-left">
             {studyHints.slice(0, studyHintLevel).map((hint, index) => (
               <p key={`${studyWord.id}-hint-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
                 Hint {index + 1}: {hint}
@@ -182,7 +182,7 @@ export const StudyTab = ({
           </div>
         )}
         {reveal && (
-          <div className="mx-auto mt-4 max-w-2xl space-y-2">
+          <div className="mx-auto mt-3 max-w-2xl space-y-2">
             <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
             <p className="text-sm text-slate-800" lang="fi">
               {studyWord.fiSimple}
@@ -195,7 +195,7 @@ export const StudyTab = ({
       </div>
 
       {!reveal && (
-        <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="study-actions mt-4 flex flex-col items-center gap-3">
           <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
             <button ref={studyRevealButtonRef} className="action-primary rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
               Reveal Meaning
@@ -215,7 +215,7 @@ export const StudyTab = ({
       )}
 
       {reveal && studyDecision === "none" && (
-        <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="study-actions mt-4 flex flex-col items-center gap-3">
           <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
             <button ref={studyKnownButtonRef} className="action-success rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
               Mark Known
@@ -231,13 +231,13 @@ export const StudyTab = ({
       )}
 
       {reveal && studyDecision !== "none" && (
-        <div className="mt-5">
+        <div className="mt-4">
           <div className={`feedback-panel rounded-3xl p-4 ${studyDecision === "known" ? "feedback-panel-correct" : "feedback-panel-warning"}`}>
             <p className="text-sm font-semibold text-ink" role="status" aria-live="polite">
               {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
             </p>
           </div>
-          <button ref={studyNextButtonRef} className="action-primary mt-4 rounded-full px-5 py-3 text-sm font-semibold" onClick={onNextStudyWord}>
+          <button ref={studyNextButtonRef} className="action-primary mt-3 rounded-full px-5 py-3 text-sm font-semibold" onClick={onNextStudyWord}>
             Next Card
           </button>
         </div>
@@ -336,3 +336,4 @@ export const StudyTab = ({
     </section>
   );
 };
+
