@@ -42,16 +42,16 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
 
   await page.getByRole("button", { name: /Sync:/ }).click();
 
-  await expect(page.getByText("Browser and cloud data differ")).toBeVisible();
+  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible();
   await expect(page.getByText("1 known, 0 practice, 0 reviewed today")).toBeVisible();
   await expect(page.getByText("0 known, 1 practice, 0 reviewed today")).toBeVisible();
 
-  await page.getByRole("button", { name: "Use Cloud Data" }).click();
+  await page.getByRole("button", { name: "Replace Browser with Cloud" }).click();
 
   await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
   await expect(page.getByText(/^Known:/)).toContainText(/0\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("30");
-  await expect(page.getByText("Browser and cloud data differ")).toHaveCount(0);
+  await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 });
 
 test("cloud sync conflict can import browser data into the cloud", async ({ page }) => {
@@ -92,14 +92,14 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   await page.goto("/");
   await page.getByRole("button", { name: /Sync:/ }).click();
 
-  await expect(page.getByText("Browser and cloud data differ")).toBeVisible();
+  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible();
 
-  await page.getByRole("button", { name: "Import Browser Data" }).click();
+  await page.getByRole("button", { name: "Overwrite Cloud with Browser" }).click();
 
   await expect(page.getByRole("button", { name: /Sync:/ })).toContainText("Up to date");
   await expect(page.getByText(/^Known:/)).toContainText(/1\/\d+/);
   await expect(page.getByLabel("Daily goal")).toHaveValue("15");
-  await expect(page.getByText("Browser and cloud data differ")).toHaveCount(0);
+  await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 
   const cloudState = await page.evaluate(() => {
     const state = (

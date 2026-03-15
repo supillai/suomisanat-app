@@ -1,9 +1,11 @@
-import type { ProgressMap } from "../../types";
+﻿import type { ProgressMap } from "../../types";
 
 export type SyncStatus = "idle" | "loading" | "saving" | "synced" | "error";
+export type SyncConflictMode = "cloud-empty" | "different-data";
+export type SyncResolutionChoice = "overwrite-cloud" | "use-cloud";
 
 export type SyncConflict = {
-  mode: "import" | "conflict";
+  mode: SyncConflictMode;
   serverProgress: ProgressMap;
   serverDailyGoal: number;
 };

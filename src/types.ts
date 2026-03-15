@@ -1,15 +1,10 @@
-export type WordTopic =
-  | "core"
-  | "time"
-  | "home"
-  | "food"
-  | "city"
-  | "health"
-  | "work"
-  | "verbs"
-  | "describing";
+export const WORD_TOPICS = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"] as const;
 
-export type WordPos = "noun" | "verb" | "adjective" | "adverb" | "pronoun" | "other";
+export type WordTopic = (typeof WORD_TOPICS)[number];
+
+export const WORD_POS_OPTIONS = ["noun", "verb", "adjective", "adverb", "pronoun", "other"] as const;
+
+export type WordPos = (typeof WORD_POS_OPTIONS)[number];
 
 export type VocabularyWord = {
   id: number;

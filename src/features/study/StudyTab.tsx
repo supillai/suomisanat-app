@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+﻿import { useEffect, useEffectEvent, useRef } from "react";
 import { POS_LABELS, STUDY_FILTER_LABELS, TOPIC_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
 import type { StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
@@ -28,6 +28,15 @@ type StudyTabProps = {
   onMarkStudyPractice: () => void;
   onDailyGoalChange: (value: number) => void;
 };
+
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  const element = target instanceof HTMLElement ? target : null;
+  if (!element) return false;
+
+  return element.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName);
+};
+
+const isButtonTarget = (target: EventTarget | null): boolean => target instanceof HTMLElement && target.tagName === "BUTTON";
 
 export const StudyTab = ({
   studyFilter,
@@ -72,97 +81,150 @@ export const StudyTab = ({
     return () => window.cancelAnimationFrame(rafId);
   }, [reveal, studyDecision, studyWord.id]);
 
+  const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (isEditableTarget(event.target)) return;
+
+    const key = event.key.toLowerCase();
+    const buttonTarget = isButtonTarget(event.target);
+
+    if (!reveal) {
+      if (key === "h") {
+        event.preventDefault();
+        onRevealStudyHint();
+        return;
+      }
+
+      if (key === "n") {
+        event.preventDefault();
+        onNextStudyWord();
+        return;
+      }
+
+      if (key === "enter" || event.key === " ") {
+        if (buttonTarget) return;
+        event.preventDefault();
+        onRevealStudyWord();
+      }
+      return;
+    }
+
+    if (studyDecision === "none") {
+      if (key === "k") {
+        event.preventDefault();
+        onMarkStudyKnown();
+        return;
+      }
+
+      if (key === "p") {
+        event.preventDefault();
+        onMarkStudyPractice();
+        return;
+      }
+    }
+
+    if (key === "n" || key === "enter" || event.key === " ") {
+      if (buttonTarget && (key === "enter" || event.key === " ")) return;
+      event.preventDefault();
+      onNextStudyWord();
+    }
+  });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      handleShortcut(event);
+    };
+
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
   return (
     <section
       id={tabPanelId("study")}
       role="tabpanel"
       aria-labelledby={tabButtonId("study")}
-      className="glass card-shadow rounded-3xl p-4 md:p-6"
+      className="surface-card rounded-[28px] px-5 py-6 md:px-8 md:py-8"
     >
-      <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
-        <span className="text-xs font-semibold text-slate-700">Study mode:</span>
+      <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Study mode">
+        <span className="eyebrow">Study mode</span>
         {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
           <button
             key={mode}
-            className={`rounded-lg border px-2 py-1 text-xs ${
-              studyFilter === mode ? "accent-gradient border-transparent text-white" : "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-            }`}
+            className={`chip-button ${studyFilter === mode ? "chip-button-active" : "chip-button-idle"}`}
             onClick={() => onStudyFilterChange(mode)}
           >
             {STUDY_FILTER_LABELS[mode]}
           </button>
         ))}
-        <span className="ml-auto text-xs text-slate-700">Cards in mode: {studyPool.length}</span>
+        <span className="ml-auto text-sm text-slate-700">Cards in mode: {studyPool.length}</span>
       </div>
 
-      <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 text-center md:px-6 md:py-5">
-        <div className="mb-1.5 flex flex-wrap justify-center gap-2">
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-            {TOPIC_LABELS[studyWord.topic]}
-          </span>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-            {POS_LABELS[studyWord.pos]}
-          </span>
+      <div className="surface-subtle rounded-[28px] px-5 py-5 text-center md:px-6 md:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-left">
+          <div className="flex flex-wrap gap-2">
+            <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
+            <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
+          </div>
+          <p className="text-xs text-slate-500">Space/Enter reveal, H hint, K known, P practice, N next</p>
         </div>
-        <h2 className="mt-1 text-4xl font-extrabold text-ink md:text-[3.25rem]">{studyWord.fi}</h2>
-        {!reveal && <p className="mt-2.5 text-sm text-slate-700">Try to recall the meaning, then reveal.</p>}
+
+        <h2 className="mt-5 text-4xl font-semibold tracking-tight text-ink md:text-[3.5rem]" lang="fi">
+          {studyWord.fi}
+        </h2>
+        {!reveal && <p className="mt-3 text-sm text-slate-700">Try to recall the meaning before revealing the answer.</p>}
         {!reveal && studyHintLevel > 0 && (
-          <div className="mx-auto mt-2.5 max-w-2xl space-y-2 text-left">
+          <div className="mx-auto mt-4 max-w-2xl space-y-2 text-left">
             {studyHints.slice(0, studyHintLevel).map((hint, index) => (
-              <p key={`${studyWord.id}-hint-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-800">
+              <p key={`${studyWord.id}-hint-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
                 Hint {index + 1}: {hint}
               </p>
             ))}
           </div>
         )}
         {reveal && (
-          <div className="mt-2.5 space-y-2">
+          <div className="mx-auto mt-4 max-w-2xl space-y-2">
             <p className="text-xl font-semibold text-accent">{studyWord.en}</p>
-            <p className="text-sm text-slate-800">{studyWord.fiSimple}</p>
-            <p className="text-sm text-slate-700">{studyExample(studyWord)}</p>
+            <p className="text-sm text-slate-800" lang="fi">
+              {studyWord.fiSimple}
+            </p>
+            <p className="text-sm text-slate-700" lang="fi">
+              {studyExample(studyWord)}
+            </p>
           </div>
         )}
       </div>
 
       {!reveal && (
-        <div className="mt-4 flex flex-col items-center gap-2.5">
-          <div className="grid w-full gap-2 sm:max-w-xl sm:grid-cols-2">
-            <button
-              ref={studyRevealButtonRef}
-              className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white"
-              onClick={onRevealStudyWord}
-            >
+        <div className="mt-5 flex flex-col items-center gap-3">
+          <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
+            <button ref={studyRevealButtonRef} className="action-primary rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
               Reveal Meaning
             </button>
             <button
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="action-secondary rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               onClick={onRevealStudyHint}
               disabled={studyHintLevel >= studyHints.length}
             >
               {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
             </button>
           </div>
-          <button className="px-3 py-1 text-sm font-semibold text-slate-600 hover:text-slate-900" onClick={onNextStudyWord}>
+          <button className="action-ghost rounded-full px-4 py-2 text-sm font-semibold" onClick={onNextStudyWord}>
             Skip for Now
           </button>
         </div>
       )}
 
       {reveal && studyDecision === "none" && (
-        <div className="mt-4 flex flex-col items-center gap-2.5">
-          <div className="grid w-full gap-2 sm:max-w-xl sm:grid-cols-2">
-            <button
-              ref={studyKnownButtonRef}
-              className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
-              onClick={onMarkStudyKnown}
-            >
+        <div className="mt-5 flex flex-col items-center gap-3">
+          <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
+            <button ref={studyKnownButtonRef} className="action-success rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
               Mark Known
             </button>
-            <button className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick={onMarkStudyPractice}>
+            <button className="action-warning rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
               Needs Practice
             </button>
           </div>
-          <button className="px-3 py-1 text-sm font-semibold text-slate-600 hover:text-slate-900" onClick={onNextStudyWord}>
+          <button className="action-ghost rounded-full px-4 py-2 text-sm font-semibold" onClick={onNextStudyWord}>
             Skip Without Saving
           </button>
         </div>
@@ -170,60 +232,58 @@ export const StudyTab = ({
 
       {reveal && studyDecision !== "none" && (
         <div className="mt-5">
-          <p className="mb-3 text-sm font-semibold text-slate-800" role="status" aria-live="polite">
-            {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
-          </p>
-          <button
-            ref={studyNextButtonRef}
-            className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white sm:w-auto"
-            onClick={onNextStudyWord}
-          >
+          <div className={`feedback-panel rounded-3xl p-4 ${studyDecision === "known" ? "feedback-panel-correct" : "feedback-panel-warning"}`}>
+            <p className="text-sm font-semibold text-ink" role="status" aria-live="polite">
+              {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
+            </p>
+          </div>
+          <button ref={studyNextButtonRef} className="action-primary mt-4 rounded-full px-5 py-3 text-sm font-semibold" onClick={onNextStudyWord}>
             Next Card
           </button>
         </div>
       )}
 
       {hasStudyActivity ? (
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.9fr)]">
-          <div className="rounded-xl bg-slate-50/80 p-3">
+        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]">
+          <div className="surface-subtle rounded-[24px] p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-ink">Session overview</p>
-              <p className="text-xs text-slate-600">
+              <p className="section-title">Session overview</p>
+              <p className="text-sm text-slate-600">
                 This session: {studyKnownSession} known, {studyPracticeSession} needs practice
               </p>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-              <article className="rounded-lg bg-white px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Reviewed Today</p>
-                <p className="mt-1 text-lg font-bold leading-none text-ink">{reviewedToday}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <article className="metric-card">
+                <p className="metric-label">Reviewed Today</p>
+                <p className="metric-value">{reviewedToday}</p>
               </article>
-              <article className="rounded-lg bg-white px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Accuracy</p>
-                <p className="mt-1 text-lg font-bold leading-none text-ink">{accuracy}%</p>
+              <article className="metric-card">
+                <p className="metric-label">Accuracy</p>
+                <p className="metric-value">{accuracy}%</p>
               </article>
-              <article className="rounded-lg bg-white px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Practice Queue</p>
-                <p className="mt-1 text-lg font-bold leading-none text-ink">{needsPracticeCount}</p>
+              <article className="metric-card">
+                <p className="metric-label">Practice Queue</p>
+                <p className="metric-value">{needsPracticeCount}</p>
               </article>
-              <article className="rounded-lg bg-white px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-wide text-slate-600">Cards in Mode</p>
-                <p className="mt-1 text-lg font-bold leading-none text-ink">{studyPool.length}</p>
+              <article className="metric-card">
+                <p className="metric-label">Cards in Mode</p>
+                <p className="metric-value">{studyPool.length}</p>
               </article>
             </div>
           </div>
 
-          <div className="rounded-xl bg-slate-50/80 p-3">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-ink">Daily goal</p>
-              <span className="text-xs text-slate-700">
+          <div className="surface-subtle rounded-[24px] p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="section-title">Daily goal</p>
+              <span className="text-sm text-slate-700">
                 {reviewedToday}/{dailyGoal}
               </span>
             </div>
-            <div className="h-2.5 rounded-full bg-slate-200">
-              <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+            <div className="progress-track">
+              <div className="progress-bar" style={{ width: `${goalPct}%` }} />
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
+            <div className="mt-4 flex items-center gap-3">
+              <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
                 Daily target
               </label>
               <input
@@ -231,7 +291,7 @@ export const StudyTab = ({
                 type="number"
                 min={5}
                 max={200}
-                className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
+                className="text-input text-input-idle w-24"
                 value={dailyGoal}
                 onChange={(event) => onDailyGoalChange(Number(event.target.value))}
               />
@@ -239,32 +299,32 @@ export const StudyTab = ({
           </div>
         </div>
       ) : (
-        <div className="mt-5 rounded-xl bg-slate-50/80 px-4 py-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="surface-subtle mt-6 rounded-[24px] px-5 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-ink">Session overview</p>
-              <p className="text-sm text-slate-600">Start reviewing cards to unlock your session stats.</p>
+              <p className="section-title">Session overview</p>
+              <p className="text-sm text-slate-600">Start reviewing cards to unlock your daily study stats.</p>
             </div>
-            <div className="min-w-0 lg:w-[320px]">
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-ink">Daily goal</p>
-                <span className="text-xs text-slate-700">
+            <div className="min-w-0 lg:w-[340px]">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="section-title">Daily goal</p>
+                <span className="text-sm text-slate-700">
                   {reviewedToday}/{dailyGoal}
                 </span>
               </div>
-              <div className="h-2.5 rounded-full bg-slate-200">
-                <div className="h-2.5 rounded-full bg-accent" style={{ width: `${goalPct}%` }} />
+              <div className="progress-track">
+                <div className="progress-bar" style={{ width: `${goalPct}%` }} />
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <label htmlFor="daily-goal-study" className="text-xs text-slate-700">
+              <div className="mt-4 flex items-center gap-3">
+                <label htmlFor="daily-goal-study-empty" className="text-sm text-slate-700">
                   Daily target
                 </label>
                 <input
-                  id="daily-goal-study"
+                  id="daily-goal-study-empty"
                   type="number"
                   min={5}
                   max={200}
-                  className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-900"
+                  className="text-input text-input-idle w-24"
                   value={dailyGoal}
                   onChange={(event) => onDailyGoalChange(Number(event.target.value))}
                 />

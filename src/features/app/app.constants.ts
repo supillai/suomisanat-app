@@ -1,4 +1,4 @@
-import type { WordPos, WordTopic } from "../../types";
+﻿import { WORD_POS_OPTIONS, WORD_TOPICS } from "../../types";
 import type { StudyFilter, Tab } from "./app.types";
 
 export const DEFAULT_DAILY_GOAL = 20;
@@ -11,11 +11,10 @@ export const TAB_CONFIG: Array<{ id: Tab; label: string }> = [
   { id: "progress", label: "Progress" }
 ];
 
-export const TOPICS: WordTopic[] = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"];
+export const TOPICS = [...WORD_TOPICS];
+export const POS_OPTIONS = [...WORD_POS_OPTIONS];
 
-export const POS_OPTIONS: WordPos[] = ["noun", "verb", "adjective", "adverb", "pronoun", "other"];
-
-export const TOPIC_LABELS: Record<WordTopic, string> = {
+export const TOPIC_LABELS = {
   core: "Core",
   time: "Time",
   home: "Home",
@@ -25,16 +24,16 @@ export const TOPIC_LABELS: Record<WordTopic, string> = {
   work: "Work",
   verbs: "Verbs",
   describing: "Describing"
-};
+} as const;
 
-export const POS_LABELS: Record<WordPos, string> = {
+export const POS_LABELS = {
   noun: "Noun",
   verb: "Verb",
   adjective: "Adjective",
   adverb: "Adverb",
   pronoun: "Pronoun",
   other: "Phrase"
-};
+} as const;
 
 export const STUDY_FILTER_LABELS: Record<StudyFilter, string> = {
   all: "All Cards",
@@ -44,5 +43,4 @@ export const STUDY_FILTER_LABELS: Record<StudyFilter, string> = {
 };
 
 export const tabButtonId = (tab: Tab): string => `tab-${tab}`;
-
 export const tabPanelId = (tab: Tab): string => `panel-${tab}`;

@@ -1,4 +1,4 @@
-import { useMemo, useReducer } from "react";
+﻿import { useMemo, useReducer } from "react";
 import type { ProgressMap, VocabularyWord } from "../../types";
 import { randomFrom } from "../../utils/collections";
 import type { QuizMode } from "../app/app.types";
@@ -23,9 +23,11 @@ export type QuizSession = {
   isAnswered: boolean;
   quizWord: VocabularyWord;
   quizOptions: string[];
+  selectedOption: string | null;
   typingValue: string;
   setTypingValue: (value: string) => void;
   quizFeedback: string;
+  lastAnswerCorrect: boolean | null;
   quizCorrect: number;
   quizWrong: number;
   miniDrillRecommendations: MiniDrillRecommendation[];
@@ -43,8 +45,10 @@ type QuizState = {
   quizMode: QuizMode;
   quizWordId: number;
   quizOptions: string[];
+  selectedOption: string | null;
   typingValue: string;
   quizFeedback: string;
+  lastAnswerCorrect: boolean | null;
   quizCorrect: number;
   quizWrong: number;
   miniDrillQueue: number[];
@@ -59,14 +63,16 @@ type QuizAction =
   | { type: "start_mini_drill"; queue: number[]; wordId: number; options: string[] }
   | { type: "advance_mini_drill"; index: number; wordId: number; options: string[] }
   | { type: "stop_mini_drill" }
-  | { type: "answer"; isCorrect: boolean; feedback: string };
+  | { type: "answer"; isCorrect: boolean; feedback: string; selectedOption: string | null };
 
 const resetQuestionState = (state: QuizState, wordId: number, options: string[]): QuizState => ({
   ...state,
   quizWordId: wordId,
   quizOptions: options,
+  selectedOption: null,
   typingValue: "",
   quizFeedback: "",
+  lastAnswerCorrect: null,
   isAnswered: false
 });
 
@@ -77,8 +83,10 @@ const createInitialQuizState = (words: VocabularyWord[]): QuizState => {
     quizMode: "mcq",
     quizWordId: initialWord.id,
     quizOptions: pickQuizOptions(initialWord, words),
+    selectedOption: null,
     typingValue: "",
     quizFeedback: "",
+    lastAnswerCorrect: null,
     quizCorrect: 0,
     quizWrong: 0,
     miniDrillQueue: [],
@@ -125,7 +133,9 @@ const quizReducer = (state: QuizState, action: QuizAction): QuizState => {
 
       return {
         ...state,
+        selectedOption: action.selectedOption,
         quizFeedback: action.feedback,
+        lastAnswerCorrect: action.isCorrect,
         quizCorrect: state.quizCorrect + (action.isCorrect ? 1 : 0),
         quizWrong: state.quizWrong + (action.isCorrect ? 0 : 1),
         isAnswered: true
@@ -205,7 +215,8 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
     dispatch({
       type: "answer",
       isCorrect,
-      feedback: isCorrect ? "Correct." : `Incorrect. Correct answer: ${quizWord.en}`
+      feedback: isCorrect ? "Correct." : `Incorrect. Correct answer: ${quizWord.en}`,
+      selectedOption: option
     });
   };
 
@@ -218,7 +229,8 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
     dispatch({
       type: "answer",
       isCorrect,
-      feedback: isCorrect ? "Correct." : buildTypingMistakeFeedback(state.typingValue, quizWord)
+      feedback: isCorrect ? "Correct." : buildTypingMistakeFeedback(state.typingValue, quizWord),
+      selectedOption: null
     });
   };
 
@@ -228,9 +240,11 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
     isAnswered: state.isAnswered,
     quizWord,
     quizOptions: state.quizOptions,
+    selectedOption: state.selectedOption,
     typingValue: state.typingValue,
     setTypingValue: (value) => dispatch({ type: "set_typing_value", value }),
     quizFeedback: state.quizFeedback,
+    lastAnswerCorrect: state.lastAnswerCorrect,
     quizCorrect: state.quizCorrect,
     quizWrong: state.quizWrong,
     miniDrillRecommendations,

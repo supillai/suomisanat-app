@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseConfig, supabase } from "../../lib/supabase";
@@ -13,7 +13,7 @@ import {
   toProgressUpserts,
   toSettingsUpsert
 } from "./sync.utils";
-import type { SyncConflict, SyncStatus, UserProgressRow, UserSettingsRow } from "./sync.types";
+import type { SyncConflict, SyncResolutionChoice, SyncStatus, UserProgressRow, UserSettingsRow } from "./sync.types";
 
 type UseCloudSyncOptions = {
   progressMap: ProgressMap;
@@ -39,7 +39,7 @@ export type CloudSyncState = {
   syncConflict: SyncConflict | null;
   lastSyncedAt: string | null;
   flushSyncNow: () => Promise<void>;
-  resolveSyncConflict: (choice: "local" | "cloud") => Promise<void>;
+  resolveSyncConflict: (choice: SyncResolutionChoice) => Promise<void>;
   sendMagicLink: () => Promise<void>;
   signOut: () => Promise<void>;
   syncBadgeLabel: string;
@@ -190,18 +190,18 @@ export const useCloudSync = ({
     }, SYNC_DEBOUNCE_MS);
   }, [flushSyncNow]);
 
-  const resolveSyncConflict = async (choice: "local" | "cloud"): Promise<void> => {
+  const resolveSyncConflict = async (choice: SyncResolutionChoice): Promise<void> => {
     const client = supabase;
     const userId = session?.user.id;
     if (!client || !userId || !syncConflict) return;
 
-    const nextProgress = choice === "local" ? progressMapRef.current : syncConflict.serverProgress;
-    const nextDailyGoal = choice === "local" ? dailyGoalRef.current : syncConflict.serverDailyGoal;
-
+    const overwriteCloud = choice === "overwrite-cloud";
+    const nextProgress = overwriteCloud ? progressMapRef.current : syncConflict.serverProgress;
+    const nextDailyGoal = overwriteCloud ? dailyGoalRef.current : syncConflict.serverDailyGoal;
     setSyncStatus("saving");
     setSyncError(null);
 
-    if (choice === "local") {
+    if (overwriteCloud) {
       const localWordIds = new Set(Object.keys(nextProgress).map((value) => Number(value)).filter((value) => Number.isFinite(value)));
       const serverWordIds = Object.keys(syncConflict.serverProgress)
         .map((value) => Number(value))
@@ -335,7 +335,7 @@ export const useCloudSync = ({
 
       if (hasLocalData && hasServerData && (progressDiffers || goalDiffers)) {
         setSyncConflict({
-          mode: "conflict",
+          mode: "different-data",
           serverProgress,
           serverDailyGoal
         });
@@ -346,7 +346,7 @@ export const useCloudSync = ({
 
       if (hasLocalData && !hasServerData) {
         setSyncConflict({
-          mode: "import",
+          mode: "cloud-empty",
           serverProgress,
           serverDailyGoal
         });
@@ -498,10 +498,10 @@ export const useCloudSync = ({
 
   const syncMessage = !hasSupabaseConfig
     ? "Cloud sync is disabled. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY."
-    : syncConflict?.mode === "import"
-      ? "Browser progress exists on this device and cloud storage is empty. Choose whether to import it."
+    : syncConflict?.mode === "cloud-empty"
+      ? "This browser has local progress, but the cloud snapshot is empty. Choose whether to upload the browser snapshot or discard it."
       : syncConflict
-        ? "Browser progress differs from cloud data. Choose which source to keep for this account."
+        ? "Browser and cloud progress differ. Choose whether the browser snapshot should overwrite the cloud or whether the cloud snapshot should replace this browser."
         : !session
           ? "Signed out. Progress is saved locally in this browser."
           : syncStatus === "loading"

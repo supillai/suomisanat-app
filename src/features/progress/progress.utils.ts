@@ -1,4 +1,4 @@
-import type { ProgressMap, ProgressState, VocabularyWord } from "../../types";
+﻿import type { ProgressMap, ProgressState, VocabularyWord } from "../../types";
 import { DEFAULT_DAILY_GOAL } from "../app/app.constants";
 
 const PROGRESS_KEY = "suomisanat-progress-v1";
@@ -26,7 +26,13 @@ export type ProgressStats = {
   goalPct: number;
 };
 
-export const todayIso = (): string => new Date().toISOString().slice(0, 10);
+const padDatePart = (value: number): string => String(value).padStart(2, "0");
+
+export const localDateIso = (value: Date): string => {
+  return `${value.getFullYear()}-${padDatePart(value.getMonth() + 1)}-${padDatePart(value.getDate())}`;
+};
+
+export const todayIso = (): string => localDateIso(new Date());
 
 export const safeInt = (value: number | null | undefined): number => {
   const parsed = Number(value);
@@ -150,4 +156,3 @@ export const buildProgressStats = (
     goalPct
   };
 };
-

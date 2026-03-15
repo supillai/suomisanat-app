@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+﻿import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProgressMap, VocabularyWord } from "../../types";
-import { buildProgressStats, safeTimestamp, summarizeProgress, todayIso } from "./progress.utils";
+import { buildProgressStats, localDateIso, safeTimestamp, summarizeProgress, todayIso } from "./progress.utils";
 
 const words: VocabularyWord[] = [
   { id: 1, fi: "kissa", en: "cat", fiSimple: "Elain.", enSimple: "An animal.", topic: "home", pos: "noun" },
@@ -9,6 +9,14 @@ const words: VocabularyWord[] = [
 ];
 
 describe("progress.utils", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("formats dates using the local calendar day", () => {
+    expect(localDateIso(new Date(2026, 2, 5, 23, 59, 59))).toBe("2026-03-05");
+  });
+
   it("builds progress stats from the tracked words", () => {
     const progressMap: ProgressMap = {
       1: {
@@ -75,6 +83,13 @@ describe("progress.utils", () => {
       totalWrong: 1,
       accuracy: 50
     });
+  });
+
+  it("reads today's date from the local clock", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 2, 15, 8, 45, 0));
+
+    expect(todayIso()).toBe("2026-03-15");
   });
 
   it("accepts only valid timestamps", () => {
