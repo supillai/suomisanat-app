@@ -74,6 +74,8 @@ export const StudyTab = ({
   const studyRevealButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyKnownButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyNextButtonRef = useRef<HTMLButtonElement | null>(null);
+  const studyRevealActionsRef = useRef<HTMLDivElement | null>(null);
+  const previousRevealRef = useRef(reveal);
   const [showMobileExample, setShowMobileExample] = useState(false);
   const supportsKeyboardUI = useFinePointer();
   const keyboardMode = useKeyboardMode();
@@ -85,6 +87,26 @@ export const StudyTab = ({
   useEffect(() => {
     setShowMobileExample(false);
   }, [reveal, studyWord.id]);
+
+  useEffect(() => {
+    const wasRevealed = previousRevealRef.current;
+    previousRevealRef.current = reveal;
+
+    if (!reveal || wasRevealed || supportsKeyboardUI || typeof window === "undefined") return;
+
+    const target = studyRevealActionsRef.current;
+    if (!target) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest"
+      });
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [reveal, supportsKeyboardUI]);
 
   useEffect(() => {
     if (!supportsKeyboardUI || !keyboardMode) return;
@@ -169,28 +191,29 @@ export const StudyTab = ({
       aria-labelledby={tabButtonId("study")}
       className="surface-card study-shell rounded-[28px] px-4 py-4 md:px-7 md:py-6"
     >
-      <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
-        <div className="flex items-center justify-between gap-2">
-          <span className="eyebrow">Study mode</span>
-          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
-            {cardsInModeLabel}
-          </span>
+      <div className="study-main-stage">
+        <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
+          <div className="flex items-center justify-between gap-2">
+            <span className="eyebrow">Study mode</span>
+            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
+              {cardsInModeLabel}
+            </span>
+          </div>
+          <div className="touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+            {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-label={STUDY_FILTER_LABELS[mode]}
+                className={`chip-button shrink-0 ${studyFilter === mode ? "chip-button-active" : "chip-button-idle"}`}
+                onClick={() => onStudyFilterChange(mode)}
+              >
+                <span className="md:hidden">{MOBILE_STUDY_FILTER_LABELS[mode]}</span>
+                <span className="hidden md:inline">{STUDY_FILTER_LABELS[mode]}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
-          {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              aria-label={STUDY_FILTER_LABELS[mode]}
-              className={`chip-button shrink-0 ${studyFilter === mode ? "chip-button-active" : "chip-button-idle"}`}
-              onClick={() => onStudyFilterChange(mode)}
-            >
-              <span className="md:hidden">{MOBILE_STUDY_FILTER_LABELS[mode]}</span>
-              <span className="hidden md:inline">{STUDY_FILTER_LABELS[mode]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div className="surface-subtle study-card rounded-[28px] px-4 py-4 text-center md:px-6 md:py-5">
         <div className="study-card-top flex flex-wrap items-start justify-between gap-2 text-left">
@@ -293,7 +316,7 @@ export const StudyTab = ({
       )}
 
       {reveal && studyDecision === "none" && (
-        <div className="study-actions mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
+        <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
           <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
             <button ref={studyKnownButtonRef} className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
               Mark Known
@@ -312,7 +335,7 @@ export const StudyTab = ({
       )}
 
       {reveal && studyDecision !== "none" && (
-        <div className="mt-4 mx-auto max-w-2xl">
+        <div className="study-reveal-tray mt-4 mx-auto max-w-2xl">
           <div className={`feedback-panel rounded-3xl p-4 ${studyDecision === "known" ? "feedback-panel-correct" : "feedback-panel-warning"}`}>
             <p className="text-sm font-semibold text-ink" role="status" aria-live="polite">
               {studyDecision === "known" ? "Saved as known." : "Saved as needs practice."}
@@ -329,6 +352,8 @@ export const StudyTab = ({
           </div>
         </div>
       )}
+
+      </div>
 
       {hasStudyActivity ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]">

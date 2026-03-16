@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { TAB_CONFIG, tabButtonId, tabPanelId } from "./app.constants";
 import type { Tab } from "./app.types";
@@ -49,7 +49,54 @@ export const AppHeader = ({
     list: null,
     progress: null
   });
+  const mobileTabBarRef = useRef<HTMLElement | null>(null);
   const mobileSyncBadgeLabel = getMobileSyncBadgeLabel(syncBadgeLabel);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const mobileTabBar = mobileTabBarRef.current;
+    if (!mobileTabBar) {
+      return;
+    }
+
+    const rootStyle = document.documentElement.style;
+    let frameId = 0;
+
+    const updateMobileTabBarClearance = () => {
+      if (window.innerWidth >= 768) {
+        rootStyle.removeProperty("--mobile-tab-bar-clearance");
+        return;
+      }
+
+      const mobileTabBarBounds = mobileTabBar.getBoundingClientRect();
+      const clearance = Math.max(0, Math.round(window.innerHeight - mobileTabBarBounds.top));
+      rootStyle.setProperty("--mobile-tab-bar-clearance", `${clearance}px`);
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateMobileTabBarClearance);
+    };
+
+    scheduleUpdate();
+
+    const resizeObserver = "ResizeObserver" in window ? new ResizeObserver(scheduleUpdate) : null;
+    resizeObserver?.observe(mobileTabBar);
+
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("orientationchange", scheduleUpdate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("orientationchange", scheduleUpdate);
+      rootStyle.removeProperty("--mobile-tab-bar-clearance");
+    };
+  }, []);
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number): void => {
     let nextIndex = currentIndex;
@@ -124,7 +171,12 @@ export const AppHeader = ({
           </div>
         </div>
 
-        <nav className="hero-nav mobile-tab-bar grid grid-cols-4 gap-2 md:grid-cols-4" role="tablist" aria-label="Main sections">
+        <nav
+          ref={mobileTabBarRef}
+          className="hero-nav mobile-tab-bar grid grid-cols-4 gap-2 md:grid-cols-4"
+          role="tablist"
+          aria-label="Main sections"
+        >
           {TAB_CONFIG.map((item, index) => (
             <button
               key={item.id}
