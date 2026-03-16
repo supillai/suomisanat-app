@@ -55,6 +55,12 @@ const REVEAL_PANEL_LABELS: Record<StudyRevealPanel, string> = {
   example: "Example"
 };
 
+const COMPACT_REVEAL_PANEL_BUTTON_LABELS: Record<StudyRevealPanel, string> = {
+  meaning: "Meaning",
+  simple: "Easy",
+  example: "Example"
+};
+
 export const StudyTab = ({
   studyFilter,
   studyPool,
@@ -227,21 +233,21 @@ export const StudyTab = ({
       id={tabPanelId("study")}
       role="tabpanel"
       aria-labelledby={tabButtonId("study")}
-      className="surface-card study-shell study-shell-focus rounded-[28px] px-4 py-4 md:px-7 md:py-6"
+      className="surface-card study-shell study-shell-focus rounded-[28px] px-4 py-4 md:px-5 md:py-5"
     >
       <div className="study-main-stage">
         <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
-          <div className="flex items-center justify-between gap-2">
+          <div className="study-toolbar-head flex items-center justify-between gap-2">
             <span className="eyebrow">Study mode</span>
             <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
               {cardsInModeLabel}
             </span>
           </div>
           <label className="study-toolbar-compact-filter">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
+            <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
             <select
               aria-label="Study filter"
-              className="study-filter-select mt-2 w-full"
+              className="study-filter-select mt-2"
               value={studyFilter}
               onChange={(event) => onStudyFilterChange(event.target.value as StudyFilter)}
             >
@@ -268,7 +274,7 @@ export const StudyTab = ({
           </div>
         </div>
 
-        <div className="surface-subtle study-card study-card-focus rounded-[28px] px-4 py-4 text-center md:px-6 md:py-5">
+        <div className="surface-subtle study-card study-card-focus rounded-[28px] px-4 py-4 text-center md:px-5 md:py-4">
           <div className="study-card-top flex flex-wrap items-start justify-between gap-2 text-left">
             <div className="flex flex-wrap gap-2">
               <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
@@ -286,39 +292,43 @@ export const StudyTab = ({
             )}
           </div>
 
-          <div className="study-card-body">
-            <h2 className="study-word mt-3.5 text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink md:text-[3.25rem]" lang="fi">
-              {studyWord.fi}
-            </h2>
+          <div className={`study-card-body ${reveal ? "study-card-body-revealed" : "study-card-body-hidden"}`}>
+            <div className={`study-word-column ${reveal ? "study-word-column-revealed" : ""}`}>
+              <h2 className="study-word mt-3 text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink md:text-[3.05rem]" lang="fi">
+                {studyWord.fi}
+              </h2>
 
-            {!reveal && (
-              <>
-                <p className="study-prompt mt-2 text-sm text-slate-700 md:hidden">Think of the meaning first.</p>
-                <p className="study-prompt mt-2 hidden text-sm text-slate-700 md:block">Try to recall the meaning before revealing the answer.</p>
-              </>
-            )}
+              {!reveal && (
+                <>
+                  <p className="study-prompt mt-2 text-sm text-slate-700 md:hidden">Think of the meaning first.</p>
+                  <p className="study-prompt mt-2 hidden text-sm text-slate-700 md:block">Try to recall the meaning before revealing the answer.</p>
+                </>
+              )}
 
-            {!reveal && currentHint && (
-              <div className="mx-auto mt-4 max-w-2xl text-left">
-                <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Latest hint</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-800">{currentHint}</p>
+              {!reveal && currentHint && (
+                <div className="study-latest-hint mx-auto mt-4 max-w-xl text-left">
+                  <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Latest hint</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-800">{currentHint}</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {reveal && (
-              <div className="mx-auto mt-4 flex w-full max-w-2xl flex-1 flex-col justify-center gap-3 text-left">
+              <div className="study-reveal-column mt-4 flex w-full flex-1 flex-col gap-3 text-left md:mt-0">
                 <div className="study-reveal-switch grid grid-cols-3 gap-2" role="group" aria-label="Reveal details">
                   {(["meaning", "simple", "example"] as StudyRevealPanel[]).map((panel) => (
                     <button
                       key={panel}
                       type="button"
+                      aria-label={REVEAL_PANEL_LABELS[panel]}
                       aria-pressed={studyRevealPanel === panel}
                       className={`study-detail-tab ${studyRevealPanel === panel ? "study-detail-tab-active" : "study-detail-tab-idle"}`}
                       onClick={() => setStudyRevealPanel(panel)}
                     >
-                      {REVEAL_PANEL_LABELS[panel]}
+                      <span className="md:hidden">{COMPACT_REVEAL_PANEL_BUTTON_LABELS[panel]}</span>
+                      <span className="hidden md:inline">{REVEAL_PANEL_LABELS[panel]}</span>
                     </button>
                   ))}
                 </div>
@@ -337,22 +347,27 @@ export const StudyTab = ({
         {!reveal && (
           <div className="study-actions mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
             <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
-              <button ref={studyRevealButtonRef} className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
-                Reveal Meaning
+              <button ref={studyRevealButtonRef} aria-label="Reveal Meaning" className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
+                <span className="md:hidden">Reveal</span>
+                <span className="hidden md:inline">Reveal Meaning</span>
               </button>
               <button
+                aria-label={studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
                 className="action-secondary w-full rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={onRevealStudyHint}
                 disabled={studyHintLevel >= studyHints.length}
               >
-                {studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
+                <span className="md:hidden">{studyHintLevel >= studyHints.length ? "Hints Used" : "Hint"}</span>
+                <span className="hidden md:inline">{studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}</span>
               </button>
             </div>
             <button
+              aria-label="Skip for Now"
               className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
               onClick={onNextStudyWord}
             >
-              Skip for Now
+              <span className="md:hidden">Skip</span>
+              <span className="hidden md:inline">Skip for Now</span>
             </button>
           </div>
         )}
@@ -360,18 +375,22 @@ export const StudyTab = ({
         {reveal && studyDecision === "none" && (
           <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
             <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
-              <button ref={studyKnownButtonRef} className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
-                Mark Known
+              <button ref={studyKnownButtonRef} aria-label="Mark Known" className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
+                <span className="md:hidden">Known</span>
+                <span className="hidden md:inline">Mark Known</span>
               </button>
-              <button className="action-warning w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
-                Needs Practice
+              <button aria-label="Needs Practice" className="action-warning w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
+                <span className="md:hidden">Practice</span>
+                <span className="hidden md:inline">Needs Practice</span>
               </button>
             </div>
             <button
+              aria-label="Skip Without Saving"
               className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
               onClick={onNextStudyWord}
             >
-              Skip Without Saving
+              <span className="md:hidden">Skip</span>
+              <span className="hidden md:inline">Skip Without Saving</span>
             </button>
           </div>
         )}
@@ -386,6 +405,7 @@ export const StudyTab = ({
             <div className="mt-3 flex justify-center">
               <button
                 ref={studyNextButtonRef}
+                aria-label="Next Card"
                 className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold sm:min-w-[12rem] sm:w-auto"
                 onClick={onNextStudyWord}
               >
