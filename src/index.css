@@ -34,6 +34,7 @@
   --warn-strong: #9b5a00;
   --danger-soft: #ffe1df;
   --danger-strong: #b42318;
+  --app-header-height: 16rem;
   --mobile-tab-bar-clearance: calc(5.9rem + env(safe-area-inset-bottom));
   color: var(--text-strong);
   background:
@@ -350,6 +351,88 @@ button:disabled {
   border-color: rgba(155, 90, 0, 0.18);
 }
 
+.study-shell-focus {
+  display: flex;
+  flex-direction: column;
+}
+
+.study-main-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.study-card-focus {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.study-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.study-detail-tab {
+  min-height: 2.4rem;
+  border-radius: 1rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.study-detail-tab-active {
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent-mid));
+  color: white;
+  box-shadow: 0 10px 24px rgba(14, 139, 131, 0.18);
+}
+
+.study-detail-tab-idle {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border-soft);
+  color: var(--text-body);
+}
+
+.study-toolbar-compact-filter {
+  display: none;
+}
+
+.study-filter-select {
+  border-radius: 1rem;
+  padding: 0.8rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  background: white;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 10px 24px rgba(19, 39, 58, 0.06);
+}
+
+.study-filter-select:focus {
+  border-color: rgba(14, 139, 131, 0.62);
+  box-shadow: 0 0 0 4px rgba(14, 139, 131, 0.14);
+  outline: none;
+}
+
+.study-reveal-panel {
+  display: flex;
+  min-height: 9rem;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.study-insights-toggle {
+  list-style: none;
+}
+
+.study-insights-toggle::-webkit-details-marker {
+  display: none;
+}
+
 .study-word,
 .quiz-word {
   text-wrap: balance;
@@ -445,7 +528,9 @@ button:disabled {
   .action-ghost,
   .action-success,
   .action-warning,
-  .text-input {
+  .text-input,
+  .study-filter-select,
+  .study-detail-tab {
     min-height: 3rem;
   }
 
@@ -480,8 +565,8 @@ button:disabled {
 }
 
 @media (max-width: 767px) {
-  .study-main-stage {
-    position: relative;
+  .study-shell-focus {
+    min-height: calc(100svh - var(--app-header-height) - 1.1rem);
   }
 
   .study-reveal-tray {
@@ -500,6 +585,10 @@ button:disabled {
 
   .app-hero {
     padding-bottom: 1rem;
+  }
+
+  .app-hero-compact {
+    margin-bottom: 0.75rem;
   }
 
   .hero-top {
@@ -549,6 +638,25 @@ button:disabled {
   .metric-value {
     font-size: 1.8rem;
   }
+
+  .study-card-body {
+    justify-content: flex-start;
+  }
+
+  .study-detail-tab {
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+    font-size: 0.74rem;
+  }
+
+  .study-reveal-panel {
+    min-height: 8rem;
+  }
+
+  .study-insights-toggle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 767px) {
@@ -592,6 +700,14 @@ button:disabled {
     margin-bottom: 0.75rem;
   }
 
+  html[data-mobile-viewport-mode="compact"] .study-toolbar-compact-filter {
+    display: block;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-toolbar-default-filters {
+    display: none;
+  }
+
   html[data-mobile-viewport-mode="compact"] .study-card,
   html[data-mobile-viewport-mode="compact"] .quiz-card {
     padding-top: 0.9rem;
@@ -618,6 +734,14 @@ button:disabled {
     padding: 0.7rem;
   }
 
+  html[data-mobile-viewport-mode="compact"] .study-shell-focus {
+    min-height: calc(100svh - var(--app-header-height) - 0.8rem);
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-reveal-panel {
+    min-height: 7rem;
+  }
+
   html[data-mobile-viewport-mode="compact"] .metric-value {
     font-size: 1.65rem;
   }
@@ -629,9 +753,35 @@ button:disabled {
     padding-right: max(2rem, env(safe-area-inset-right));
     padding-bottom: 1.25rem;
   }
+
+  .study-shell-focus {
+    min-height: calc(100svh - var(--app-header-height) - 2.25rem);
+  }
+
+  .app-hero-compact .nav-tab {
+    min-height: 2.5rem;
+    padding: 0.68rem 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .study-card-body {
+    justify-content: center;
+  }
+
+  .study-reveal-panel {
+    min-height: 10rem;
+  }
 }
 
 @media (min-width: 768px) and (max-height: 920px) {
+  .study-toolbar-compact-filter {
+    display: block;
+  }
+
+  .study-toolbar-default-filters {
+    display: none;
+  }
+
   .app-frame {
     padding-top: 0.75rem;
     padding-bottom: 0.9rem;

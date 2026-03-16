@@ -43,6 +43,7 @@ export const AppHeader = ({
   onTabChange,
   onOpenCloudSync
 }: AppHeaderProps) => {
+  const headerRef = useRef<HTMLElement | null>(null);
   const tabButtonRefs = useRef<Record<Tab, HTMLButtonElement | null>>({
     study: null,
     quiz: null,
@@ -51,22 +52,27 @@ export const AppHeader = ({
   });
   const mobileTabBarRef = useRef<HTMLElement | null>(null);
   const mobileSyncBadgeLabel = getMobileSyncBadgeLabel(syncBadgeLabel);
+  const isStudyFocus = tab === "study";
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
 
-    const mobileTabBar = mobileTabBarRef.current;
-    if (!mobileTabBar) {
+    const header = headerRef.current;
+    if (!header) {
       return;
     }
 
+    const mobileTabBar = mobileTabBarRef.current;
     const rootStyle = document.documentElement.style;
     let frameId = 0;
 
-    const updateMobileTabBarClearance = () => {
-      if (window.innerWidth >= 768) {
+    const updateLayoutMetrics = () => {
+      const headerBounds = header.getBoundingClientRect();
+      rootStyle.setProperty("--app-header-height", `${Math.max(0, Math.round(headerBounds.height))}px`);
+
+      if (window.innerWidth >= 768 || !mobileTabBar) {
         rootStyle.removeProperty("--mobile-tab-bar-clearance");
         return;
       }
@@ -78,13 +84,16 @@ export const AppHeader = ({
 
     const scheduleUpdate = () => {
       window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(updateMobileTabBarClearance);
+      frameId = window.requestAnimationFrame(updateLayoutMetrics);
     };
 
     scheduleUpdate();
 
     const resizeObserver = "ResizeObserver" in window ? new ResizeObserver(scheduleUpdate) : null;
-    resizeObserver?.observe(mobileTabBar);
+    resizeObserver?.observe(header);
+    if (mobileTabBar) {
+      resizeObserver?.observe(mobileTabBar);
+    }
 
     window.addEventListener("resize", scheduleUpdate);
     window.addEventListener("orientationchange", scheduleUpdate);
@@ -94,9 +103,10 @@ export const AppHeader = ({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("orientationchange", scheduleUpdate);
+      rootStyle.removeProperty("--app-header-height");
       rootStyle.removeProperty("--mobile-tab-bar-clearance");
     };
-  }, []);
+  }, [tab]);
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number): void => {
     let nextIndex = currentIndex;
@@ -120,52 +130,63 @@ export const AppHeader = ({
   };
 
   return (
-    <header className="hero-panel app-hero mb-4 rounded-[30px] px-4 pt-4 pb-3.5 md:rounded-[32px] md:px-6 md:py-5">
-      <div className="flex flex-col gap-3.5 md:gap-4">
-        <div className="hero-top flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <header
+      ref={headerRef}
+      className={
+        isStudyFocus
+          ? "hero-panel app-hero app-hero-compact mb-3 rounded-[28px] px-4 py-3 md:mb-3 md:rounded-[30px] md:px-6 md:py-4"
+          : "hero-panel app-hero mb-4 rounded-[30px] px-4 pt-4 pb-3.5 md:rounded-[32px] md:px-6 md:py-5"
+      }
+    >
+      <div className={`flex flex-col ${isStudyFocus ? "gap-2.5 md:gap-3" : "gap-3.5 md:gap-4"}`}>
+        <div className={`hero-top flex flex-col ${isStudyFocus ? "gap-2.5 md:gap-3" : "gap-3"} md:flex-row md:items-start md:justify-between`}>
           <div className="hero-copy space-y-2">
-            <p className="eyebrow hidden text-white/80 md:block">Finnish YKI vocabulary trainer</p>
+            {!isStudyFocus && <p className="eyebrow hidden text-white/80 md:block">Finnish YKI vocabulary trainer</p>}
             <div className="flex items-start justify-between gap-3 md:block">
               <div className="space-y-1.5">
-                <h1 className="text-[2rem] font-semibold tracking-tight text-white md:text-4xl">SuomiSanat</h1>
-                <p className="max-w-xl text-sm leading-5 text-white/82 md:hidden">YKI level 3 vocabulary trainer</p>
+                <h1 className={isStudyFocus ? "text-[1.85rem] font-semibold tracking-tight text-white md:text-[3rem]" : "text-[2rem] font-semibold tracking-tight text-white md:text-4xl"}>SuomiSanat</h1>
+                {!isStudyFocus && <p className="max-w-xl text-sm leading-5 text-white/82 md:hidden">YKI level 3 vocabulary trainer</p>}
               </div>
               <button
                 type="button"
                 aria-label={`Sync: ${syncBadgeLabel}`}
                 aria-controls="cloud-sync-panel"
                 aria-expanded={isCloudSyncOpen}
-                className={`inline-flex h-10 w-[7.75rem] shrink-0 items-center justify-center overflow-hidden rounded-full border px-3.5 py-2 text-xs font-semibold leading-none md:hidden ${syncBadgeClass}`}
+                className={`inline-flex h-10 ${isStudyFocus ? "w-[7rem]" : "w-[7.75rem]"} shrink-0 items-center justify-center overflow-hidden rounded-full border px-3.5 py-2 text-xs font-semibold leading-none md:hidden ${syncBadgeClass}`}
                 onClick={onOpenCloudSync}
               >
                 <span className="truncate">Sync: {mobileSyncBadgeLabel}</span>
               </button>
             </div>
-            <div className="flex flex-wrap gap-2 md:hidden">
-              <div className="inline-flex rounded-full bg-white/12 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/18">
-                Known {knownCount}/{totalWords}
+            {!isStudyFocus && (
+              <div className="flex flex-wrap gap-2 md:hidden">
+                <div className="inline-flex rounded-full bg-white/12 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/18">
+                  Known {knownCount}/{totalWords}
+                </div>
+                <div className="inline-flex rounded-full bg-white/12 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/18">
+                  Today {reviewedToday}
+                </div>
               </div>
-              <div className="inline-flex rounded-full bg-white/12 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/18">
-                Today {reviewedToday}
-              </div>
-            </div>
-            <p className="hero-summary hidden max-w-2xl text-sm leading-6 text-white/85 md:block md:text-base">
-              Finnish study vocabulary for YKI level 3, with plain-English meanings, easy Finnish clues, offline study, and optional cloud sync.
-            </p>
+            )}
+            {!isStudyFocus && (
+              <p className="hero-summary hidden max-w-2xl text-sm leading-6 text-white/85 md:block md:text-base">
+                Finnish study vocabulary for YKI level 3, with plain-English meanings, easy Finnish clues, offline study, and optional cloud sync.
+              </p>
+            )}
           </div>
 
-          <div className="hero-badges hidden shrink-0 flex-wrap items-center gap-2 md:flex">
+          <div className={`hero-badges hidden shrink-0 flex-wrap items-center ${isStudyFocus ? "gap-1.5" : "gap-2"} md:flex`}>
             <button
               type="button"
               aria-label={`Sync: ${syncBadgeLabel}`}
               aria-controls="cloud-sync-panel"
               aria-expanded={isCloudSyncOpen}
-              className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold ${syncBadgeClass}`}
+              className={`inline-flex items-center rounded-full border ${isStudyFocus ? "px-3.5 py-1.5 text-xs" : "px-4 py-2 text-sm"} font-semibold ${syncBadgeClass}`}
               onClick={onOpenCloudSync}
             >
               Sync: {syncBadgeLabel}
             </button>
-            <div className="inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/20">
+            <div className={`inline-flex rounded-full bg-white/15 ${isStudyFocus ? "px-3.5 py-1.5 text-xs" : "px-4 py-2 text-sm"} font-semibold text-white ring-1 ring-white/20`}>
               Known: {knownCount}/{totalWords}
             </div>
           </div>

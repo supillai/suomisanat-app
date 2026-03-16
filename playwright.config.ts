@@ -20,14 +20,17 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: ["**/*.mobile.spec.ts"],
       use: { ...devices["Desktop Chrome"] }
     },
     {
       name: "pixel-5",
+      testIgnore: ["**/*.desktop.spec.ts"],
       use: { ...pixel5 }
     },
     {
       name: "iphone-13",
+      testIgnore: ["**/*.desktop.spec.ts"],
       use: {
         ...devices["iPhone 13"],
         browserName: "chromium"
@@ -35,6 +38,7 @@ export default defineConfig({
     },
     {
       name: "pixel-5-short",
+      testIgnore: ["**/*.desktop.spec.ts"],
       use: {
         ...pixel5,
         viewport: {
