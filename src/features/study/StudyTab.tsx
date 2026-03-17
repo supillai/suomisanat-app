@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from "react";
 import { POS_LABELS, STUDY_FILTER_LABELS, TOPIC_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
 import type { StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
@@ -7,6 +8,12 @@ import { useFinePointer } from "../../utils/useFinePointer";
 import { useKeyboardMode } from "../../utils/useKeyboardMode";
 
 type StudyRevealPanel = "meaning" | "simple" | "example";
+type StudyCardAdvanceMotion = "next" | "skip";
+type StudySwipeIntent = "known" | "practice";
+
+const STUDY_SWIPE_THRESHOLD_PX = 84;
+const STUDY_SWIPE_MAX_OFFSET_PX = 160;
+const STUDY_CARD_ADVANCE_MS = 220;
 
 type StudyTabProps = {
   studyFilter: StudyFilter;
@@ -93,6 +100,14 @@ const getRemainingCopy = (reviewedToday: number, dailyGoal: number, goalPct: num
   return `${remaining} to go`;
 };
 
+const getSessionActivityCopy = (studyKnownSession: number, studyPracticeSession: number): string => {
+  if (studyKnownSession === 0 && studyPracticeSession === 0) {
+    return "One calm card at a time.";
+  }
+
+  return `This session: ${studyKnownSession} known, ${studyPracticeSession} practice.`;
+};
+
 export const StudyTab = ({
   studyFilter,
   studyPool,
@@ -127,8 +142,15 @@ export const StudyTab = ({
   const studyRevealPanelRef = useRef<HTMLDivElement | null>(null);
   const shortcutHelpRef = useRef<HTMLDivElement | null>(null);
   const previousRevealRef = useRef(reveal);
+  const advanceTimerRef = useRef<number | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const [studyRevealPanel, setStudyRevealPanel] = useState<StudyRevealPanel>("meaning");
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeActive, setSwipeActive] = useState(false);
+  const [swipeIntent, setSwipeIntent] = useState<StudySwipeIntent | null>(null);
+  const [cardAdvanceMotion, setCardAdvanceMotion] = useState<StudyCardAdvanceMotion | null>(null);
   const supportsKeyboardUI = useFinePointer();
   const keyboardMode = useKeyboardMode();
   const cardsInModeLabel = `${studyPool.length} ${studyPool.length === 1 ? "card" : "cards"}`;
@@ -139,9 +161,36 @@ export const StudyTab = ({
   const streakLabel = getStreakLabel(streakDays);
   const momentumCopy = getMomentumCopy(reviewedToday, dailyGoal, goalPct);
   const remainingCopy = getRemainingCopy(reviewedToday, dailyGoal, goalPct);
+  const sessionActivityCopy = getSessionActivityCopy(studyKnownSession, studyPracticeSession);
   const studyDetailsSummary = hasStudyActivity
     ? `Momentum ${reviewedToday}/${dailyGoal}, ${streakLabel.toLowerCase()}`
     : `Momentum ready, ${streakLabel.toLowerCase()}`;
+  const canSwipeCard = reveal && studyDecision === "none";
+  const swipeKnownOpacity = swipeOffset > 0 ? Math.min(swipeOffset / STUDY_SWIPE_THRESHOLD_PX, 1) : 0;
+  const swipePracticeOpacity = swipeOffset < 0 ? Math.min(Math.abs(swipeOffset) / STUDY_SWIPE_THRESHOLD_PX, 1) : 0;
+  const swipeGuideCopy = swipeIntent === "known"
+    ? "Release to mark known."
+    : swipeIntent === "practice"
+      ? "Release to mark practice."
+      : canSwipeCard
+        ? "Swipe left for practice or right for known."
+        : !reveal
+          ? "Tap the card or use Reveal Meaning."
+          : "Choose a status to save this card.";
+  const actionBusy = cardAdvanceMotion !== null;
+  const cardShellStyle = cardAdvanceMotion === "next"
+    ? { transform: "translate3d(8%, -2%, 0) rotate(2deg)", opacity: 0 }
+    : cardAdvanceMotion === "skip"
+      ? { transform: "translate3d(0, -6%, 0) scale(0.985)", opacity: 0 }
+      : { transform: `translate3d(${swipeOffset}px, 0, 0) rotate(${swipeOffset / 24}deg)` };
+
+  const resetSwipeState = (): void => {
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    setSwipeOffset(0);
+    setSwipeActive(false);
+    setSwipeIntent(null);
+  };
 
   const revealPanelContent = useMemo(() => {
     switch (studyRevealPanel) {
@@ -173,6 +222,10 @@ export const StudyTab = ({
   useEffect(() => {
     setStudyRevealPanel("meaning");
   }, [reveal, studyWord.id]);
+
+  useEffect(() => {
+    resetSwipeState();
+  }, [reveal, studyDecision, studyWord.id]);
 
   useEffect(() => {
     if (!supportsKeyboardUI && showShortcutHelp) {
@@ -243,6 +296,37 @@ export const StudyTab = ({
     return () => window.cancelAnimationFrame(rafId);
   }, [keyboardMode, reveal, studyDecision, studyWord.id, supportsKeyboardUI]);
 
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(advanceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const queueNextStudyWord = (motion: StudyCardAdvanceMotion): void => {
+    if (actionBusy) return;
+
+    resetSwipeState();
+    setCardAdvanceMotion(motion);
+
+    if (typeof window === "undefined") {
+      onNextStudyWord();
+      setCardAdvanceMotion(null);
+      return;
+    }
+
+    if (advanceTimerRef.current !== null) {
+      window.clearTimeout(advanceTimerRef.current);
+    }
+
+    advanceTimerRef.current = window.setTimeout(() => {
+      onNextStudyWord();
+      setCardAdvanceMotion(null);
+      advanceTimerRef.current = null;
+    }, STUDY_CARD_ADVANCE_MS);
+  };
+
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) return;
 
@@ -258,7 +342,7 @@ export const StudyTab = ({
 
       if (key === "n") {
         event.preventDefault();
-        onNextStudyWord();
+        queueNextStudyWord("next");
         return;
       }
 
@@ -287,7 +371,7 @@ export const StudyTab = ({
     if (key === "n" || key === "enter" || event.key === " ") {
       if (buttonTarget && (key === "enter" || event.key === " ")) return;
       event.preventDefault();
-      onNextStudyWord();
+      queueNextStudyWord("next");
     }
   });
 
@@ -302,6 +386,72 @@ export const StudyTab = ({
     return () => window.removeEventListener("keydown", listener);
   }, [supportsKeyboardUI]);
 
+  const handleStudyCardClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (reveal || actionBusy) return;
+
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest(".study-card-shell-tools")) return;
+
+    onRevealStudyWord();
+  };
+
+  const handleCardTouchStart = (event: ReactTouchEvent<HTMLDivElement>): void => {
+    if (!canSwipeCard || actionBusy) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    setSwipeActive(false);
+  };
+
+  const handleCardTouchMove = (event: ReactTouchEvent<HTMLDivElement>): void => {
+    if (!canSwipeCard || actionBusy) return;
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - touchStartXRef.current;
+    const deltaY = touch.clientY - touchStartYRef.current;
+
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 14) {
+      return;
+    }
+
+    const clampedDeltaX = Math.max(-STUDY_SWIPE_MAX_OFFSET_PX, Math.min(STUDY_SWIPE_MAX_OFFSET_PX, deltaX));
+    setSwipeActive(true);
+    setSwipeOffset(clampedDeltaX);
+    setSwipeIntent(clampedDeltaX >= 28 ? "known" : clampedDeltaX <= -28 ? "practice" : null);
+  };
+
+  const handleCardTouchEnd = (event: ReactTouchEvent<HTMLDivElement>): void => {
+    if (!canSwipeCard || actionBusy) {
+      resetSwipeState();
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    const startX = touchStartXRef.current;
+    if (!touch || startX === null) {
+      resetSwipeState();
+      return;
+    }
+
+    const deltaX = touch.clientX - startX;
+    resetSwipeState();
+
+    if (deltaX >= STUDY_SWIPE_THRESHOLD_PX) {
+      onMarkStudyKnown();
+      return;
+    }
+
+    if (deltaX <= -STUDY_SWIPE_THRESHOLD_PX) {
+      onMarkStudyPractice();
+    }
+  };
+
   return (
     <section
       id={tabPanelId("study")}
@@ -311,19 +461,47 @@ export const StudyTab = ({
     >
       <div className="study-main-stage">
         <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
-          <div className="study-toolbar-head flex items-start justify-between gap-3">
-            <span className="eyebrow pt-1">Study mode</span>
-            <div className="min-w-[11.5rem] max-w-[15rem] rounded-[22px] border border-slate-200 bg-white/85 px-3 py-3 text-left shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Known progress</span>
-                <span className="text-sm font-semibold text-slate-700">{knownCount}/{totalWords}</span>
+          <div className="study-progress-band rounded-[30px] px-4 py-4 md:px-5 md:py-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <span className="eyebrow">Study mode</span>
+                  <p className="max-w-2xl text-sm leading-6 text-slate-600">{sessionActivityCopy}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
+                  <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
+                  <span className="state-pill state-pill-neutral">{remainingCopy}</span>
+                </div>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/80">
-                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style={{ width: `${knownProgressPct}%` }} />
+              <div className="grid grid-cols-2 gap-3 sm:max-w-[18rem]">
+                <article className="study-stage-metric">
+                  <p className="metric-label">Known</p>
+                  <p className="study-stage-metric-value">
+                    {knownCount}
+                    <span className="study-stage-metric-unit">/{totalWords}</span>
+                  </p>
+                </article>
+                <article className="study-stage-metric">
+                  <p className="metric-label">Today</p>
+                  <p className="study-stage-metric-value">
+                    {reviewedToday}
+                    <span className="study-stage-metric-unit">/{dailyGoal}</span>
+                  </p>
+                </article>
               </div>
-              <p className="mt-2 text-xs text-slate-600">{cardsInModeLabel} in this set</p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <span>Known progress</span>
+                <span>{knownProgressPct}%</span>
+              </div>
+              <div className="study-stage-track">
+                <div className="study-stage-track-bar" style={{ width: `${knownProgressPct}%` }} />
+              </div>
             </div>
           </div>
+
           <label className="study-toolbar-compact-filter">
             <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
             <select
@@ -339,6 +517,7 @@ export const StudyTab = ({
               ))}
             </select>
           </label>
+
           <div className="study-toolbar-default-filters touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
             {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
               <button
@@ -355,107 +534,151 @@ export const StudyTab = ({
           </div>
         </div>
 
-        <div className="surface-subtle study-card study-card-focus rounded-[28px] px-4 py-4 text-center md:px-5 md:py-4">
-          <div className="study-card-top flex flex-wrap items-start justify-between gap-2 text-left">
-            <div className="flex flex-wrap gap-2">
-              <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
-              <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
-            </div>
-            <div className="flex max-w-[18rem] flex-wrap items-center justify-end gap-2">
-              {showHintCounter && (
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Hint {studyHintLevel}/{studyHints.length}
-                </span>
-              )}
-              {supportsKeyboardUI && (
-                <div ref={shortcutHelpRef} className="relative">
-                  <button
-                    type="button"
-                    aria-label="Show keyboard shortcuts"
-                    aria-expanded={showShortcutHelp}
-                    aria-controls="study-shortcut-help"
-                    title="Keyboard shortcuts"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-600 shadow-sm"
-                    onClick={() => setShowShortcutHelp((current) => !current)}
+        <div className="surface-subtle study-card study-card-focus rounded-[32px] px-3 py-3 md:px-4 md:py-4">
+          <div
+            className={`study-card-shell ${reveal ? "study-card-shell-revealed" : ""}`}
+            data-swipe-active={swipeActive ? "true" : "false"}
+            data-swipe-intent={swipeIntent ?? "idle"}
+            onClick={handleStudyCardClick}
+            onTouchStart={handleCardTouchStart}
+            onTouchMove={handleCardTouchMove}
+            onTouchEnd={handleCardTouchEnd}
+            onTouchCancel={resetSwipeState}
+            style={{
+              ...cardShellStyle,
+              touchAction: canSwipeCard ? "pan-y" : "manipulation"
+            }}
+          >
+            {supportsKeyboardUI && (
+              <div ref={shortcutHelpRef} className="study-card-shell-tools" onClick={(event) => event.stopPropagation()}>
+                <button
+                  type="button"
+                  aria-label="Show keyboard shortcuts"
+                  aria-expanded={showShortcutHelp}
+                  aria-controls="study-shortcut-help"
+                  title="Keyboard shortcuts"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-sm font-semibold text-slate-600 shadow-sm"
+                  onClick={() => setShowShortcutHelp((current) => !current)}
+                >
+                  ?
+                </button>
+                {showShortcutHelp && (
+                  <div
+                    id="study-shortcut-help"
+                    className="absolute right-0 z-20 mt-2 w-[17rem] rounded-[20px] border border-slate-200 bg-white p-4 text-left shadow-[0_18px_40px_rgba(19,39,58,0.14)]"
                   >
-                    ?
-                  </button>
-                  {showShortcutHelp && (
-                    <div
-                      id="study-shortcut-help"
-                      className="absolute right-0 z-20 mt-2 w-[17rem] rounded-[20px] border border-slate-200 bg-white p-4 text-left shadow-[0_18px_40px_rgba(19,39,58,0.14)]"
-                    >
-                      <p className="text-sm font-semibold text-ink">Keyboard shortcuts</p>
-                      <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                        <li><strong>Space / Enter</strong>: reveal or move next</li>
-                        <li><strong>H</strong>: show a hint</li>
-                        <li><strong>K</strong>: mark known</li>
-                        <li><strong>P</strong>: mark practice</li>
-                        <li><strong>N</strong>: next card</li>
-                      </ul>
+                    <p className="text-sm font-semibold text-ink">Keyboard shortcuts</p>
+                    <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                      <li><strong>Space / Enter</strong>: reveal or move next</li>
+                      <li><strong>H</strong>: show a hint</li>
+                      <li><strong>K</strong>: mark known</li>
+                      <li><strong>P</strong>: mark practice</li>
+                      <li><strong>N</strong>: next card</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="study-card-gesture-indicators" aria-hidden="true">
+              <span className="study-gesture-badge study-gesture-badge-left" style={{ opacity: swipePracticeOpacity }}>
+                Practice
+              </span>
+              <span className="study-gesture-badge study-gesture-badge-right" style={{ opacity: swipeKnownOpacity }}>
+                Known
+              </span>
+            </div>
+
+            <div className="study-card-flip">
+              <article className="study-card-face study-card-face-front">
+                <div className="study-card-face-header">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
+                    <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
+                  </div>
+                  {showHintCounter && <span className="study-card-counter">Hint {studyHintLevel}/{studyHints.length}</span>}
+                </div>
+
+                <div className="study-card-front-body">
+                  <p className="study-card-kicker">Finnish</p>
+                  <h2 className="study-word study-card-hero-word" lang="fi">
+                    {studyWord.fi}
+                  </h2>
+                  <p className="study-front-prompt">Think of the meaning before you flip the card.</p>
+
+                  {currentHint && (
+                    <div className="study-latest-hint mx-auto w-full max-w-xl text-left">
+                      <div className="rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Latest hint</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-800">{currentHint}</p>
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
 
-          <div className={`study-card-body ${reveal ? "study-card-body-revealed" : "study-card-body-hidden"}`}>
-            <div className={`study-word-column ${reveal ? "study-word-column-revealed" : ""}`}>
-              <h2 className="study-word mt-3 text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink md:text-[3.05rem]" lang="fi">
-                {studyWord.fi}
-              </h2>
+                <div className="study-card-front-foot">
+                  <span>Tap the card or use Reveal Meaning</span>
+                </div>
+              </article>
 
-              {!reveal && (
-                <>
-                  <p className="study-prompt mt-2 text-sm text-slate-700 md:hidden">Think of the meaning first.</p>
-                  <p className="study-prompt mt-2 hidden text-sm text-slate-700 md:block">Try to recall the meaning before revealing the answer.</p>
-                </>
-              )}
+              <article className="study-card-face study-card-face-back">
+                <div className="study-card-face-header">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
+                    <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
+                  </div>
+                  <span className="study-card-counter">{revealPanelContent.label}</span>
+                </div>
 
-              {!reveal && currentHint && (
-                <div className="study-latest-hint mx-auto mt-4 max-w-xl text-left">
-                  <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Latest hint</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-800">{currentHint}</p>
+                <div className="study-card-back-body">
+                  <h2 className="study-word study-card-back-word" lang="fi">
+                    {studyWord.fi}
+                  </h2>
+
+                  <div className="study-reveal-switch grid grid-cols-3 gap-2" role="group" aria-label="Reveal details">
+                    {(["meaning", "simple", "example"] as StudyRevealPanel[]).map((panel) => (
+                      <button
+                        key={panel}
+                        type="button"
+                        aria-label={REVEAL_PANEL_LABELS[panel]}
+                        aria-pressed={studyRevealPanel === panel}
+                        className={`study-detail-tab ${studyRevealPanel === panel ? "study-detail-tab-active" : "study-detail-tab-idle"}`}
+                        onClick={() => setStudyRevealPanel(panel)}
+                      >
+                        <span className="md:hidden">{COMPACT_REVEAL_PANEL_BUTTON_LABELS[panel]}</span>
+                        <span className="hidden md:inline">{REVEAL_PANEL_LABELS[panel]}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div ref={studyRevealPanelRef} className="study-reveal-panel rounded-[24px] border border-slate-200 px-4 py-4 md:px-5 md:py-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{revealPanelContent.label}</p>
+                    <p className={`mt-2 ${revealPanelContent.bodyClassName}`} lang={revealPanelContent.lang}>
+                      {revealPanelContent.body}
+                    </p>
                   </div>
                 </div>
-              )}
+
+                <div className="study-swipe-guide" aria-live="polite">
+                  <span>Practice</span>
+                  <span>{swipeGuideCopy}</span>
+                  <span>Known</span>
+                </div>
+              </article>
             </div>
-
-            {reveal && (
-              <div className="study-reveal-column mt-4 flex w-full flex-1 flex-col gap-3 text-left md:mt-0">
-                <div className="study-reveal-switch grid grid-cols-3 gap-2" role="group" aria-label="Reveal details">
-                  {(["meaning", "simple", "example"] as StudyRevealPanel[]).map((panel) => (
-                    <button
-                      key={panel}
-                      type="button"
-                      aria-label={REVEAL_PANEL_LABELS[panel]}
-                      aria-pressed={studyRevealPanel === panel}
-                      className={`study-detail-tab ${studyRevealPanel === panel ? "study-detail-tab-active" : "study-detail-tab-idle"}`}
-                      onClick={() => setStudyRevealPanel(panel)}
-                    >
-                      <span className="md:hidden">{COMPACT_REVEAL_PANEL_BUTTON_LABELS[panel]}</span>
-                      <span className="hidden md:inline">{REVEAL_PANEL_LABELS[panel]}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div ref={studyRevealPanelRef} className="study-reveal-panel rounded-[24px] border border-slate-200 bg-white px-4 py-4 md:px-5 md:py-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{revealPanelContent.label}</p>
-                  <p className={`mt-2 ${revealPanelContent.bodyClassName}`} lang={revealPanelContent.lang}>
-                    {revealPanelContent.body}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {!reveal && (
           <div className="study-actions mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
             <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.75fr)]">
-              <button ref={studyRevealButtonRef} aria-label="Reveal Meaning" className="action-primary w-full rounded-full px-5 py-3.5 text-sm font-semibold md:text-base" onClick={onRevealStudyWord}>
+              <button
+                ref={studyRevealButtonRef}
+                aria-label="Reveal Meaning"
+                className="action-primary w-full rounded-full px-5 py-3.5 text-sm font-semibold md:text-base"
+                onClick={onRevealStudyWord}
+                disabled={actionBusy}
+              >
                 <span className="md:hidden">Reveal</span>
                 <span className="hidden md:inline">Reveal Meaning</span>
               </button>
@@ -463,7 +686,7 @@ export const StudyTab = ({
                 aria-label={studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}
                 className="action-secondary w-full rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={onRevealStudyHint}
-                disabled={studyHintLevel >= studyHints.length}
+                disabled={actionBusy || studyHintLevel >= studyHints.length}
               >
                 <span className="md:hidden">{studyHintLevel >= studyHints.length ? "Hints Used" : "Hint"}</span>
                 <span className="hidden md:inline">{studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}</span>
@@ -473,7 +696,7 @@ export const StudyTab = ({
               type="button"
               aria-label="Skip for Now"
               className="study-skip-link text-sm font-semibold"
-              onClick={onNextStudyWord}
+              onClick={() => queueNextStudyWord("skip")}
             >
               <span className="md:hidden">Skip for now</span>
               <span className="hidden md:inline">Skip for Now</span>
@@ -484,20 +707,31 @@ export const StudyTab = ({
         {reveal && studyDecision === "none" && (
           <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
             <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-2">
-              <button ref={studyKnownButtonRef} aria-label="Mark Known" className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
+              <button
+                ref={studyKnownButtonRef}
+                aria-label="Mark Known"
+                className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold"
+                onClick={onMarkStudyKnown}
+                disabled={actionBusy}
+              >
                 <span className="md:hidden">Known</span>
-                <span className="hidden md:inline">Mark Known</span>
+                <span className="hidden md:inline">Known</span>
               </button>
-              <button aria-label="Needs Practice" className="action-warning w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyPractice}>
+              <button
+                aria-label="Needs Practice"
+                className="action-warning w-full rounded-full px-5 py-3 text-sm font-semibold"
+                onClick={onMarkStudyPractice}
+                disabled={actionBusy}
+              >
                 <span className="md:hidden">Practice</span>
-                <span className="hidden md:inline">Needs Practice</span>
+                <span className="hidden md:inline">Practice</span>
               </button>
             </div>
             <button
               type="button"
               aria-label="Skip Without Saving"
               className="study-skip-link text-sm font-semibold"
-              onClick={onNextStudyWord}
+              onClick={() => queueNextStudyWord("skip")}
             >
               <span className="md:hidden">Skip</span>
               <span className="hidden md:inline">Skip Without Saving</span>
@@ -517,7 +751,8 @@ export const StudyTab = ({
                 ref={studyNextButtonRef}
                 aria-label="Next Card"
                 className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold sm:min-w-[12rem] sm:w-auto"
-                onClick={onNextStudyWord}
+                onClick={() => queueNextStudyWord("next")}
+                disabled={actionBusy}
               >
                 Next Card
               </button>
@@ -654,6 +889,3 @@ export const StudyTab = ({
     </section>
   );
 };
-
-
-
