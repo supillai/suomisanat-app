@@ -10,6 +10,7 @@ type ProgressTabProps = {
   reviewedToday: number;
   dailyGoal: number;
   goalPct: number;
+  streakDays: number;
   miniDrillRecommendations: MiniDrillRecommendation[];
   cloudSync: CloudSyncState;
   onDailyGoalChange: (value: number) => void;
@@ -50,7 +51,7 @@ const getSyncSummaryTitle = (cloudSync: CloudSyncState): string => {
 
 const getSyncActionLabel = (cloudSync: CloudSyncState): string => {
   if (cloudSync.showCloudSync) {
-    return "Hide Sync Details";
+    return "Hide Details";
   }
 
   if (cloudSync.syncConflict) {
@@ -72,6 +73,35 @@ const getConnectionLabel = (cloudSync: CloudSyncState): string => {
   return cloudSync.session ? "Signed in" : "Signed out";
 };
 
+const getStreakLabel = (streakDays: number): string => {
+  if (streakDays <= 0) {
+    return "Start a streak";
+  }
+
+  return `${streakDays} day${streakDays === 1 ? "" : "s"}`;
+};
+
+const getMomentumCopy = (reviewedToday: number, dailyGoal: number, goalPct: number): string => {
+  if (goalPct >= 100) {
+    return "Daily target reached. Keep going if you want extra reps.";
+  }
+
+  if (reviewedToday === 0) {
+    return `One review gets today started. Target ${dailyGoal}.`;
+  }
+
+  return `${reviewedToday} of ${dailyGoal} reviews completed today.`;
+};
+
+const getRemainingCopy = (reviewedToday: number, dailyGoal: number, goalPct: number): string => {
+  if (goalPct >= 100) {
+    return "Goal complete";
+  }
+
+  const remaining = Math.max(dailyGoal - reviewedToday, 0);
+  return `${remaining} to go`;
+};
+
 export const ProgressTab = ({
   knownCount,
   needsPracticeCount,
@@ -79,6 +109,7 @@ export const ProgressTab = ({
   reviewedToday,
   dailyGoal,
   goalPct,
+  streakDays,
   miniDrillRecommendations,
   cloudSync,
   onDailyGoalChange,
@@ -88,6 +119,9 @@ export const ProgressTab = ({
   const syncActionLabel = getSyncActionLabel(cloudSync);
   const syncConnectionLabel = getConnectionLabel(cloudSync);
   const handleSyncAction = cloudSync.showCloudSync ? cloudSync.hideCloudSync : cloudSync.openCloudSync;
+  const momentumCopy = getMomentumCopy(reviewedToday, dailyGoal, goalPct);
+  const remainingCopy = getRemainingCopy(reviewedToday, dailyGoal, goalPct);
+  const streakLabel = getStreakLabel(streakDays);
 
   return (
     <section
@@ -98,7 +132,7 @@ export const ProgressTab = ({
     >
       <div>
         <p className="eyebrow">Progress</p>
-        <h2 className="mt-2 text-2xl font-semibold text-ink">Track recall, goals, and sync state</h2>
+        <h2 className="mt-2 text-2xl font-semibold text-ink">Track recall, momentum, and sync state</h2>
       </div>
 
       <div className="surface-subtle mt-5 rounded-[26px] p-4 md:p-5">
@@ -112,7 +146,7 @@ export const ProgressTab = ({
             </div>
             <div className="space-y-1.5">
               <p className="text-lg font-semibold text-ink">{syncSummaryTitle}</p>
-              <p className="text-sm leading-6 text-slate-700">{cloudSync.syncMessage}</p>
+              <p className="text-sm leading-6 text-slate-700" role="status" aria-live="polite">{cloudSync.syncMessage}</p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
               <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">Last synced: {cloudSync.lastSyncedLabel}</span>
@@ -125,7 +159,7 @@ export const ProgressTab = ({
             aria-label={syncActionLabel}
             aria-controls="cloud-sync-panel"
             aria-expanded={cloudSync.showCloudSync}
-            className="action-secondary w-full rounded-full px-4 py-2 text-sm font-semibold lg:w-auto"
+            className="action-secondary w-full rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap lg:w-auto"
             onClick={handleSyncAction}
           >
             {syncActionLabel}
@@ -165,6 +199,7 @@ export const ProgressTab = ({
               onSendMagicLink={() => {
                 void cloudSync.sendMagicLink();
               }}
+              showSummaryHeader={false}
             />
           </div>
         )}
@@ -190,18 +225,31 @@ export const ProgressTab = ({
       </div>
 
       <div className="surface-subtle mt-5 rounded-[26px] p-4 md:p-5">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="section-title">Daily goal progress</p>
-          <span className="text-sm text-slate-700">
-            {reviewedToday}/{dailyGoal}
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1.5">
+            <p className="section-title">Today's momentum</p>
+            <p className="text-sm text-slate-600">{momentumCopy}</p>
+          </div>
+          <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-200">
+            <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+              <path
+                d="M10.7 2.3c.3 1.5-.2 2.8-1.4 4-.9.9-1.4 1.9-1.4 3 0 1.4.9 2.7 2.4 3.3-.2-.5-.3-1-.3-1.6 0-1.6 1.1-3 2.8-4.4 1 1.2 1.5 2.4 1.5 3.7 0 2.5-1.8 4.6-4.5 5.4-3.3-.7-5.6-3.2-5.6-6.1 0-2.7 1.7-4.6 3.8-6.4.8-.7 1.7-1.4 2.7-2.9Z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>{streakLabel}</span>
           </span>
         </div>
-        <div className="progress-track">
+        <div className="mt-4 progress-track">
           <div className="progress-bar" style={{ width: `${goalPct}%` }} />
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-700">
+          <span>{remainingCopy}</span>
+          <span>{reviewedToday}/{dailyGoal}</span>
         </div>
         <div className="mt-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
           <label htmlFor="daily-goal" className="text-sm text-slate-700">
-            Daily goal
+            Daily target
           </label>
           <input
             id="daily-goal"
@@ -243,3 +291,5 @@ export const ProgressTab = ({
     </section>
   );
 };
+
+

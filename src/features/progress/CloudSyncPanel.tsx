@@ -1,4 +1,4 @@
-﻿import type { Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import type { ProgressSummary } from "./progress.utils";
 import type { SyncConflict, SyncResolutionChoice, SyncStatus } from "../sync/sync.types";
 
@@ -25,6 +25,7 @@ type CloudSyncPanelProps = {
   onResolveConflict: (choice: SyncResolutionChoice) => void;
   onAuthEmailChange: (value: string) => void;
   onSendMagicLink: () => void;
+  showSummaryHeader?: boolean;
 };
 
 type SnapshotSummaryCardProps = {
@@ -42,7 +43,7 @@ const SnapshotSummaryCard = ({ title, mobileTitle, summary }: SnapshotSummaryCar
         Today {summary.reviewedToday}
       </span>
     </div>
-    <p className="mt-2 text-sm text-slate-800 md:hidden">{summary.known} known · {summary.needsPractice} practice</p>
+    <p className="mt-2 text-sm text-slate-800 md:hidden">{summary.known} known / {summary.needsPractice} practice</p>
     <p className="mt-2 hidden text-sm text-slate-800 md:block">
       {summary.known} known, {summary.needsPractice} practice, {summary.reviewedToday} reviewed today
     </p>
@@ -90,7 +91,8 @@ export const CloudSyncPanel = ({
   onSignOut,
   onResolveConflict,
   onAuthEmailChange,
-  onSendMagicLink
+  onSendMagicLink,
+  showSummaryHeader = true
 }: CloudSyncPanelProps) => {
   const summariesMatch = Boolean(
     syncConflict &&
@@ -131,55 +133,63 @@ export const CloudSyncPanel = ({
   const primaryConflictShortLabel = syncConflict?.mode === "cloud-empty" ? "Upload" : "Use browser";
   const secondaryConflictShortLabel = syncConflict?.mode === "cloud-empty" ? "Keep cloud" : "Use cloud";
   const authMessageIsError = /failed|could not|error/i.test(authMessage);
+  const panelClassName = showSummaryHeader
+    ? "surface-subtle rounded-[28px] p-4 md:p-5"
+    : "rounded-[24px] border border-slate-200 bg-white/80 p-4 md:p-5";
+  const detailsClassName = showSummaryHeader ? "mt-4 border-t border-slate-200 pt-4" : undefined;
 
   return (
-    <div className="surface-subtle rounded-[28px] p-4 md:p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 space-y-2.5 md:space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
-              {syncBadgeLabel}
-            </span>
-            <span className="section-title">Cloud sync</span>
+    <div className={panelClassName}>
+      {showSummaryHeader && (
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-2.5 md:space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${syncBadgeClass}`}>
+                {syncBadgeLabel}
+              </span>
+              <span className="section-title">Cloud sync</span>
+            </div>
+            <p className="text-sm leading-5 text-slate-700" role="status" aria-live="polite">
+              {syncMessage}
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
+              <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">Last synced: {lastSyncedLabel}</span>
+              <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">{connectionLabel}</span>
+            </div>
+            <p className="max-w-full break-all text-xs leading-5 text-slate-500 md:hidden" title={sessionEmail || undefined}>
+              {mobileConnectionMeta}
+            </p>
+            <p className="hidden text-xs text-slate-500 md:block">{connectionMetaLabel}</p>
           </div>
-          <p className="text-sm leading-5 text-slate-700" role="status" aria-live="polite">
-            {syncMessage}
-          </p>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
-            <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">Last synced: {lastSyncedLabel}</span>
-            <span className="inline-flex rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">{connectionLabel}</span>
-          </div>
-          <p className="max-w-full break-all text-xs leading-5 text-slate-500 md:hidden" title={sessionEmail || undefined}>
-            {mobileConnectionMeta}
-          </p>
-          <p className="hidden text-xs text-slate-500 md:block">{connectionMetaLabel}</p>
+
+          <button
+            type="button"
+            aria-label="Hide details"
+            className="action-ghost inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold md:w-auto"
+            onClick={onHide}
+            aria-expanded={isExpanded}
+            aria-controls="cloud-sync-panel"
+          >
+            <span className="md:hidden">Close</span>
+            <span className="hidden md:inline">Hide details</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true" className="cloud-sync-chevron h-4 w-4 text-slate-500" data-open={isExpanded}>
+              <path
+                d="M5.75 7.75 10 12l4.25-4.25"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+              />
+            </svg>
+          </button>
         </div>
+      )}
 
-        <button
-          type="button"
-          aria-label="Hide details"
-          className="action-ghost inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold md:w-auto"
-          onClick={onHide}
-          aria-expanded={isExpanded}
-          aria-controls="cloud-sync-panel"
-        >
-          <span className="md:hidden">Close</span>
-          <span className="hidden md:inline">Hide details</span>
-          <svg viewBox="0 0 20 20" aria-hidden="true" className="cloud-sync-chevron h-4 w-4 text-slate-500" data-open={isExpanded}>
-            <path
-              d="M5.75 7.75 10 12l4.25-4.25"
-              fill="none"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.8"
-            />
-          </svg>
-        </button>
-      </div>
-
-      <div id="cloud-sync-panel" className="mt-4 border-t border-slate-200 pt-4">
+      <div id="cloud-sync-panel" className={detailsClassName}>
         <div className="flex flex-col gap-4">
+          {!showSummaryHeader && sessionEmail && <p className="text-sm text-slate-600">{sessionEmail}</p>}
+
           {hasSupabaseConfig && session && (
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <button
@@ -311,4 +321,3 @@ export const CloudSyncPanel = ({
     </div>
   );
 };
-

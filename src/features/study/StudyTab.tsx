@@ -21,6 +21,9 @@ type StudyTabProps = {
   reviewedToday: number;
   accuracy: number;
   needsPracticeCount: number;
+  knownCount: number;
+  totalWords: number;
+  streakDays: number;
   dailyGoal: number;
   goalPct: number;
   hasStudyActivity: boolean;
@@ -61,6 +64,35 @@ const COMPACT_REVEAL_PANEL_BUTTON_LABELS: Record<StudyRevealPanel, string> = {
   example: "Example"
 };
 
+const getStreakLabel = (streakDays: number): string => {
+  if (streakDays <= 0) {
+    return "Start a streak";
+  }
+
+  return `${streakDays} day${streakDays === 1 ? "" : "s"} streak`;
+};
+
+const getMomentumCopy = (reviewedToday: number, dailyGoal: number, goalPct: number): string => {
+  if (goalPct >= 100) {
+    return "Daily target reached. Extra reps now count as bonus review.";
+  }
+
+  if (reviewedToday === 0) {
+    return `Start with one review. Today's target is ${dailyGoal}.`;
+  }
+
+  return `${reviewedToday} of ${dailyGoal} reviews completed today.`;
+};
+
+const getRemainingCopy = (reviewedToday: number, dailyGoal: number, goalPct: number): string => {
+  if (goalPct >= 100) {
+    return "Goal complete";
+  }
+
+  const remaining = Math.max(dailyGoal - reviewedToday, 0);
+  return `${remaining} to go`;
+};
+
 export const StudyTab = ({
   studyFilter,
   studyPool,
@@ -74,6 +106,9 @@ export const StudyTab = ({
   reviewedToday,
   accuracy,
   needsPracticeCount,
+  knownCount,
+  totalWords,
+  streakDays,
   dailyGoal,
   goalPct,
   hasStudyActivity,
@@ -89,17 +124,24 @@ export const StudyTab = ({
   const studyKnownButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyNextButtonRef = useRef<HTMLButtonElement | null>(null);
   const studyRevealActionsRef = useRef<HTMLDivElement | null>(null);
+  const studyRevealPanelRef = useRef<HTMLDivElement | null>(null);
+  const shortcutHelpRef = useRef<HTMLDivElement | null>(null);
   const previousRevealRef = useRef(reveal);
   const [studyRevealPanel, setStudyRevealPanel] = useState<StudyRevealPanel>("meaning");
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const supportsKeyboardUI = useFinePointer();
   const keyboardMode = useKeyboardMode();
   const cardsInModeLabel = `${studyPool.length} ${studyPool.length === 1 ? "card" : "cards"}`;
   const showHintCounter = !reveal && studyHintLevel > 0;
   const studyExampleText = studyExample(studyWord);
   const currentHint = studyHintLevel > 0 ? studyHints[studyHintLevel - 1] : null;
+  const knownProgressPct = totalWords > 0 ? Math.round((knownCount / totalWords) * 100) : 0;
+  const streakLabel = getStreakLabel(streakDays);
+  const momentumCopy = getMomentumCopy(reviewedToday, dailyGoal, goalPct);
+  const remainingCopy = getRemainingCopy(reviewedToday, dailyGoal, goalPct);
   const studyDetailsSummary = hasStudyActivity
-    ? `Today ${reviewedToday}/${dailyGoal}, accuracy ${accuracy}%, practice ${needsPracticeCount}`
-    : `Daily goal ${reviewedToday}/${dailyGoal}`;
+    ? `Momentum ${reviewedToday}/${dailyGoal}, ${streakLabel.toLowerCase()}`
+    : `Momentum ready, ${streakLabel.toLowerCase()}`;
 
   const revealPanelContent = useMemo(() => {
     switch (studyRevealPanel) {
@@ -133,18 +175,50 @@ export const StudyTab = ({
   }, [reveal, studyWord.id]);
 
   useEffect(() => {
+    if (!supportsKeyboardUI && showShortcutHelp) {
+      setShowShortcutHelp(false);
+    }
+  }, [showShortcutHelp, supportsKeyboardUI]);
+
+  useEffect(() => {
+    if (!showShortcutHelp || typeof document === "undefined") return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!shortcutHelpRef.current?.contains(event.target as Node)) {
+        setShowShortcutHelp(false);
+      }
+    };
+
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowShortcutHelp(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [showShortcutHelp]);
+
+  useEffect(() => {
     const wasRevealed = previousRevealRef.current;
     previousRevealRef.current = reveal;
 
     if (!reveal || wasRevealed || supportsKeyboardUI || typeof window === "undefined") return;
 
-    const target = studyRevealActionsRef.current;
+    const panelTarget = studyRevealPanelRef.current;
+    const fallbackTarget = studyRevealActionsRef.current;
+    const target = panelTarget ?? fallbackTarget;
     if (!target) return;
 
     const rafId = window.requestAnimationFrame(() => {
       target.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
+        behavior: "auto",
+        block: panelTarget ? "end" : "nearest",
         inline: "nearest"
       });
     });
@@ -237,11 +311,18 @@ export const StudyTab = ({
     >
       <div className="study-main-stage">
         <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
-          <div className="study-toolbar-head flex items-center justify-between gap-2">
-            <span className="eyebrow">Study mode</span>
-            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
-              {cardsInModeLabel}
-            </span>
+          <div className="study-toolbar-head flex items-start justify-between gap-3">
+            <span className="eyebrow pt-1">Study mode</span>
+            <div className="min-w-[11.5rem] max-w-[15rem] rounded-[22px] border border-slate-200 bg-white/85 px-3 py-3 text-left shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Known progress</span>
+                <span className="text-sm font-semibold text-slate-700">{knownCount}/{totalWords}</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/80">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style={{ width: `${knownProgressPct}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-600">{cardsInModeLabel} in this set</p>
+            </div>
           </div>
           <label className="study-toolbar-compact-filter">
             <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
@@ -280,16 +361,43 @@ export const StudyTab = ({
               <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
               <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
             </div>
-            {(showHintCounter || supportsKeyboardUI) && (
-              <div className="flex max-w-[18rem] flex-wrap items-center justify-end gap-2">
-                {showHintCounter && (
-                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Hint {studyHintLevel}/{studyHints.length}
-                  </span>
-                )}
-                {supportsKeyboardUI && <p className="study-shortcuts text-xs text-slate-500 md:text-right">Space/Enter reveal, H hint, K known, P practice, N next</p>}
-              </div>
-            )}
+            <div className="flex max-w-[18rem] flex-wrap items-center justify-end gap-2">
+              {showHintCounter && (
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Hint {studyHintLevel}/{studyHints.length}
+                </span>
+              )}
+              {supportsKeyboardUI && (
+                <div ref={shortcutHelpRef} className="relative">
+                  <button
+                    type="button"
+                    aria-label="Show keyboard shortcuts"
+                    aria-expanded={showShortcutHelp}
+                    aria-controls="study-shortcut-help"
+                    title="Keyboard shortcuts"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-600 shadow-sm"
+                    onClick={() => setShowShortcutHelp((current) => !current)}
+                  >
+                    ?
+                  </button>
+                  {showShortcutHelp && (
+                    <div
+                      id="study-shortcut-help"
+                      className="absolute right-0 z-20 mt-2 w-[17rem] rounded-[20px] border border-slate-200 bg-white p-4 text-left shadow-[0_18px_40px_rgba(19,39,58,0.14)]"
+                    >
+                      <p className="text-sm font-semibold text-ink">Keyboard shortcuts</p>
+                      <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                        <li><strong>Space / Enter</strong>: reveal or move next</li>
+                        <li><strong>H</strong>: show a hint</li>
+                        <li><strong>K</strong>: mark known</li>
+                        <li><strong>P</strong>: mark practice</li>
+                        <li><strong>N</strong>: next card</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={`study-card-body ${reveal ? "study-card-body-revealed" : "study-card-body-hidden"}`}>
@@ -333,7 +441,7 @@ export const StudyTab = ({
                   ))}
                 </div>
 
-                <div className="study-reveal-panel rounded-[24px] border border-slate-200 bg-white px-4 py-4 md:px-5 md:py-4">
+                <div ref={studyRevealPanelRef} className="study-reveal-panel rounded-[24px] border border-slate-200 bg-white px-4 py-4 md:px-5 md:py-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{revealPanelContent.label}</p>
                   <p className={`mt-2 ${revealPanelContent.bodyClassName}`} lang={revealPanelContent.lang}>
                     {revealPanelContent.body}
@@ -345,9 +453,9 @@ export const StudyTab = ({
         </div>
 
         {!reveal && (
-          <div className="study-actions mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
-            <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
-              <button ref={studyRevealButtonRef} aria-label="Reveal Meaning" className="action-primary w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onRevealStudyWord}>
+          <div className="study-actions mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
+            <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.75fr)]">
+              <button ref={studyRevealButtonRef} aria-label="Reveal Meaning" className="action-primary w-full rounded-full px-5 py-3.5 text-sm font-semibold md:text-base" onClick={onRevealStudyWord}>
                 <span className="md:hidden">Reveal</span>
                 <span className="hidden md:inline">Reveal Meaning</span>
               </button>
@@ -362,19 +470,20 @@ export const StudyTab = ({
               </button>
             </div>
             <button
+              type="button"
               aria-label="Skip for Now"
-              className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
+              className="study-skip-link text-sm font-semibold"
               onClick={onNextStudyWord}
             >
-              <span className="md:hidden">Skip</span>
+              <span className="md:hidden">Skip for now</span>
               <span className="hidden md:inline">Skip for Now</span>
             </button>
           </div>
         )}
 
         {reveal && studyDecision === "none" && (
-          <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-3 md:mx-auto md:max-w-3xl md:flex-row md:items-center md:justify-center">
-            <div className="grid w-full gap-3 min-[380px]:grid-cols-2 md:max-w-2xl md:flex-1">
+          <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
+            <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-2">
               <button ref={studyKnownButtonRef} aria-label="Mark Known" className="action-success w-full rounded-full px-5 py-3 text-sm font-semibold" onClick={onMarkStudyKnown}>
                 <span className="md:hidden">Known</span>
                 <span className="hidden md:inline">Mark Known</span>
@@ -385,8 +494,9 @@ export const StudyTab = ({
               </button>
             </div>
             <button
+              type="button"
               aria-label="Skip Without Saving"
-              className="action-ghost w-full self-stretch rounded-full px-4 py-2 text-sm font-semibold sm:w-auto sm:self-start md:shrink-0 md:self-auto md:whitespace-nowrap"
+              className="study-skip-link text-sm font-semibold"
               onClick={onNextStudyWord}
             >
               <span className="md:hidden">Skip</span>
@@ -452,49 +562,77 @@ export const StudyTab = ({
             </div>
 
             <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="section-title">Daily goal</p>
-                <span className="text-sm text-slate-700">
-                  {reviewedToday}/{dailyGoal}
-                </span>
-              </div>
-              <div className="progress-track">
-                <div className="progress-bar" style={{ width: `${goalPct}%` }} />
-              </div>
-              <div className="mt-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
-                <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
-                  Daily target
-                </label>
-                <input
-                  id="daily-goal-study"
-                  type="number"
-                  min={5}
-                  max={200}
-                  className="text-input text-input-idle w-full min-[420px]:w-24"
-                  value={dailyGoal}
-                  onChange={(event) => onDailyGoalChange(Number(event.target.value))}
-                />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1.5">
+                    <p className="section-title">Today's momentum</p>
+                    <p className="text-sm text-slate-600">{momentumCopy}</p>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-200">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                      <path
+                        d="M10.7 2.3c.3 1.5-.2 2.8-1.4 4-.9.9-1.4 1.9-1.4 3 0 1.4.9 2.7 2.4 3.3-.2-.5-.3-1-.3-1.6 0-1.6 1.1-3 2.8-4.4 1 1.2 1.5 2.4 1.5 3.7 0 2.5-1.8 4.6-4.5 5.4-3.3-.7-5.6-3.2-5.6-6.1 0-2.7 1.7-4.6 3.8-6.4.8-.7 1.7-1.4 2.7-2.9Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span>{streakLabel}</span>
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-bar" style={{ width: `${goalPct}%` }} />
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                  <span>{remainingCopy}</span>
+                  <span>{reviewedToday}/{dailyGoal}</span>
+                </div>
+                <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
+                  <label htmlFor="daily-goal-study" className="text-sm text-slate-700">
+                    Daily target
+                  </label>
+                  <input
+                    id="daily-goal-study"
+                    type="number"
+                    min={5}
+                    max={200}
+                    className="text-input text-input-idle w-full min-[420px]:w-24"
+                    value={dailyGoal}
+                    onChange={(event) => onDailyGoalChange(Number(event.target.value))}
+                  />
+                </div>
               </div>
             </div>
           </div>
         ) : (
           <div className="mt-4 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <p className="section-title">Session overview</p>
-                <p className="text-sm text-slate-600">Review a card to start today's study stats.</p>
+                <p className="text-sm text-slate-600">Review one card to start today's momentum.</p>
               </div>
-              <div className="min-w-0 lg:w-[340px]">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="section-title">Daily goal</p>
-                  <span className="text-sm text-slate-700">
-                    {reviewedToday}/{dailyGoal}
+              <div className="min-w-0 lg:w-[340px] space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1.5">
+                    <p className="section-title">Today's momentum</p>
+                    <p className="text-sm text-slate-600">{momentumCopy}</p>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-200">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                      <path
+                        d="M10.7 2.3c.3 1.5-.2 2.8-1.4 4-.9.9-1.4 1.9-1.4 3 0 1.4.9 2.7 2.4 3.3-.2-.5-.3-1-.3-1.6 0-1.6 1.1-3 2.8-4.4 1 1.2 1.5 2.4 1.5 3.7 0 2.5-1.8 4.6-4.5 5.4-3.3-.7-5.6-3.2-5.6-6.1 0-2.7 1.7-4.6 3.8-6.4.8-.7 1.7-1.4 2.7-2.9Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span>{streakLabel}</span>
                   </span>
                 </div>
                 <div className="progress-track">
                   <div className="progress-bar" style={{ width: `${goalPct}%` }} />
                 </div>
-                <div className="mt-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                  <span>{remainingCopy}</span>
+                  <span>{reviewedToday}/{dailyGoal}</span>
+                </div>
+                <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:gap-3">
                   <label htmlFor="daily-goal-study-empty" className="text-sm text-slate-700">
                     Daily target
                   </label>
@@ -516,3 +654,6 @@ export const StudyTab = ({
     </section>
   );
 };
+
+
+

@@ -1,8 +1,10 @@
-﻿import { useAppState } from "../app/AppStateContext";
+import { useAppState } from "../app/AppStateContext";
+import { calculateReviewStreak } from "../progress/progress.utils";
 import { StudyTab } from "./StudyTab";
 
 export default function StudyTabScreen() {
   const { studySession, progressStore } = useAppState();
+  const streakDays = calculateReviewStreak(progressStore.progressMap);
 
   return (
     <StudyTab
@@ -18,6 +20,9 @@ export default function StudyTabScreen() {
       reviewedToday={progressStore.stats.reviewedToday}
       accuracy={progressStore.stats.accuracy}
       needsPracticeCount={progressStore.stats.needsPracticeCount}
+      knownCount={progressStore.stats.knownCount}
+      totalWords={progressStore.stats.totalWords}
+      streakDays={streakDays}
       dailyGoal={progressStore.dailyGoal}
       goalPct={progressStore.stats.goalPct}
       hasStudyActivity={studySession.hasStudyActivity}

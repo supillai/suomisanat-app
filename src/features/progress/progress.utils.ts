@@ -1,4 +1,4 @@
-﻿import type { ProgressMap, ProgressState, VocabularyWord } from "../../types";
+import type { ProgressMap, ProgressState, VocabularyWord } from "../../types";
 import { DEFAULT_DAILY_GOAL } from "../app/app.constants";
 
 const PROGRESS_KEY = "suomisanat-progress-v1";
@@ -33,6 +33,46 @@ export const localDateIso = (value: Date): string => {
 };
 
 export const todayIso = (): string => localDateIso(new Date());
+const shiftIsoDate = (isoDate: string, dayOffset: number): string => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + dayOffset);
+  return localDateIso(date);
+};
+
+export const calculateReviewStreak = (map: ProgressMap, anchorDate: Date = new Date()): number => {
+  const reviewedDates = Array.from(
+    new Set(
+      Object.values(map)
+        .map((state) => state.lastReviewed)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )
+  ).sort((first, second) => second.localeCompare(first));
+
+  if (reviewedDates.length === 0) return 0;
+
+  const anchorIsoDate = localDateIso(anchorDate);
+  const earliestActiveIsoDate = shiftIsoDate(anchorIsoDate, -1);
+  const latestReviewedDate = reviewedDates[0];
+
+  if (latestReviewedDate !== anchorIsoDate && latestReviewedDate !== earliestActiveIsoDate) {
+    return 0;
+  }
+
+  const reviewedDateSet = new Set(reviewedDates);
+  let streakDays = 1;
+  let cursorIsoDate = latestReviewedDate;
+
+  while (true) {
+    cursorIsoDate = shiftIsoDate(cursorIsoDate, -1);
+
+    if (!reviewedDateSet.has(cursorIsoDate)) {
+      return streakDays;
+    }
+
+    streakDays += 1;
+  }
+};
 
 export const safeInt = (value: number | null | undefined): number => {
   const parsed = Number(value);

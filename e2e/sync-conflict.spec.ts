@@ -78,7 +78,7 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.");
   await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(0);
   await expectKnownWordsMetric(page, 0);
-  await expect(page.getByLabel("Daily goal")).toHaveValue("30");
+  await expect(page.getByLabel("Daily target")).toHaveValue("30");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 });
 
@@ -132,7 +132,7 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.");
   await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(0);
   await expectKnownWordsMetric(page, 1);
-  await expect(page.getByLabel("Daily goal")).toHaveValue("15");
+  await expect(page.getByLabel("Daily target")).toHaveValue("15");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
 
   const cloudState = await page.evaluate(() => {
@@ -179,3 +179,4 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   expect(cloudState?.progressWrites).toEqual([expect.objectContaining({ word_id: 1, known: true, needs_practice: false })]);
   expect(cloudState?.settingsWrites).toContain(15);
 });
+

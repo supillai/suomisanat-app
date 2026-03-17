@@ -1,6 +1,6 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProgressMap, VocabularyWord } from "../../types";
-import { buildProgressStats, localDateIso, safeTimestamp, summarizeProgress, todayIso } from "./progress.utils";
+import { buildProgressStats, calculateReviewStreak, localDateIso, safeTimestamp, summarizeProgress, todayIso } from "./progress.utils";
 
 const words: VocabularyWord[] = [
   { id: 1, fi: "kissa", en: "cat", fiSimple: "Elain.", enSimple: "An animal.", topic: "home", pos: "noun" },
@@ -83,6 +83,42 @@ describe("progress.utils", () => {
       totalWrong: 1,
       accuracy: 50
     });
+  });
+
+  it("counts a review streak through today or yesterday", () => {
+    const progressMap: ProgressMap = {
+      1: {
+        seen: 1,
+        correct: 1,
+        wrong: 0,
+        known: true,
+        needsPractice: false,
+        lastReviewed: "2026-03-16",
+        updatedAt: null
+      },
+      2: {
+        seen: 1,
+        correct: 1,
+        wrong: 0,
+        known: false,
+        needsPractice: false,
+        lastReviewed: "2026-03-15",
+        updatedAt: null
+      },
+      3: {
+        seen: 1,
+        correct: 0,
+        wrong: 1,
+        known: false,
+        needsPractice: true,
+        lastReviewed: "2026-03-14",
+        updatedAt: null
+      }
+    };
+
+    expect(calculateReviewStreak(progressMap, new Date(2026, 2, 16, 10, 0, 0))).toBe(3);
+    expect(calculateReviewStreak(progressMap, new Date(2026, 2, 17, 10, 0, 0))).toBe(3);
+    expect(calculateReviewStreak(progressMap, new Date(2026, 2, 18, 10, 0, 0))).toBe(0);
   });
 
   it("reads today's date from the local clock", () => {
