@@ -161,6 +161,7 @@ button:disabled {
 }
 
 .nav-tab {
+  position: relative;
   display: flex;
   min-height: 2.75rem;
   align-items: center;
@@ -178,10 +179,34 @@ button:disabled {
   box-shadow: 0 16px 30px rgba(8, 24, 37, 0.16);
 }
 
-.nav-tab-idle {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.nav-tab-indicator {
+  position: absolute;
+  display: block;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+}
+
+.nav-tab-indicator-muted {
+  background: #cbd5e1;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
+}
+
+.nav-tab-indicator-active {
+  background: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+.nav-tab-indicator-alert {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.nav-tab-indicator-error {
+  background: #fb7185;
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.18);
 }
 
 .chip-button {
@@ -645,6 +670,7 @@ button:disabled {
   }
 
   .mobile-tab-bar .nav-tab {
+  position: relative;
     min-width: 0;
     min-height: 3.3rem;
     border-radius: 1rem;
@@ -720,6 +746,7 @@ button:disabled {
   }
 
   html[data-mobile-viewport-mode="compact"] .mobile-tab-bar .nav-tab {
+  position: relative;
     min-height: 3rem;
     padding: 0.45rem 0.25rem;
     font-size: 0.74rem;
@@ -884,6 +911,7 @@ button:disabled {
   }
 
   .app-hero-compact .nav-tab {
+  position: relative;
     min-height: 2.35rem;
     padding: 0.58rem 0.82rem;
     font-size: 0.86rem;
@@ -973,6 +1001,7 @@ button:disabled {
   }
 
   .nav-tab {
+  position: relative;
     padding: 0.62rem 0.88rem;
   }
 
@@ -1064,6 +1093,7 @@ button:disabled {
   }
 
   .nav-tab {
+  position: relative;
     padding: 0.58rem 0.82rem;
     font-size: 0.88rem;
   }

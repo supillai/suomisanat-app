@@ -57,13 +57,14 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
   await page.goto("/");
   await waitForMockConflictState(page);
 
-  const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Action needed/, { timeout: 10000 });
-  await syncButton.click();
+  const progressTab = page.getByRole("tab", { name: "Progress" });
+  await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(1, { timeout: 10000 });
+  await progressTab.click();
 
-  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
+  const progressPanel = page.locator("#panel-progress");
+  await expect(progressPanel.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
 
-  const snapshotCards = page.locator("#cloud-sync-panel article");
+  const snapshotCards = progressPanel.locator("#cloud-sync-panel article");
   await expect(snapshotCards).toHaveCount(2);
   await expect(snapshotCards.nth(0)).toContainText("1 known");
   await expect(snapshotCards.nth(0)).toContainText("0 practice");
@@ -74,8 +75,8 @@ test("cloud sync conflict can be resolved in favor of cloud data", async ({ page
 
   await page.getByRole("button", { name: "Replace Browser with Cloud" }).click();
 
-  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Up to date/);
-  await page.getByRole("tab", { name: "Progress" }).click();
+  await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.");
+  await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(0);
   await expectKnownWordsMetric(page, 0);
   await expect(page.getByLabel("Daily goal")).toHaveValue("30");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
@@ -119,16 +120,17 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   await page.goto("/");
   await waitForMockConflictState(page);
 
-  const syncButton = page.getByRole("button", { name: /Sync:/ });
-  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Action needed/, { timeout: 10000 });
-  await syncButton.click();
+  const progressTab = page.getByRole("tab", { name: "Progress" });
+  await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(1, { timeout: 10000 });
+  await progressTab.click();
 
-  await expect(page.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
+  const progressPanel = page.locator("#panel-progress");
+  await expect(progressPanel.getByText("Browser and cloud snapshots differ")).toBeVisible({ timeout: 10000 });
 
   await page.getByRole("button", { name: "Overwrite Cloud with Browser" }).click();
 
-  await expect(syncButton).toHaveAttribute("aria-label", /Sync: Up to date/);
-  await page.getByRole("tab", { name: "Progress" }).click();
+  await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.");
+  await expect(progressTab.locator("[data-sync-indicator='true']")).toHaveCount(0);
   await expectKnownWordsMetric(page, 1);
   await expect(page.getByLabel("Daily goal")).toHaveValue("15");
   await expect(page.getByText("Browser and cloud snapshots differ")).toHaveCount(0);
@@ -177,4 +179,3 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   expect(cloudState?.progressWrites).toEqual([expect.objectContaining({ word_id: 1, known: true, needs_practice: false })]);
   expect(cloudState?.settingsWrites).toContain(15);
 });
-
