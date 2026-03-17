@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from "react";
-import { POS_LABELS, STUDY_FILTER_LABELS, TOPIC_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
+import { STUDY_FILTER_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
 import type { StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
 import type { VocabularyWord } from "../../types";
@@ -456,6 +456,59 @@ export const StudyTab = ({
     }
   };
 
+  const studyProgressBand = (
+    <div className="study-progress-band rounded-[30px] px-4 py-4 md:px-5 md:py-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <span className="eyebrow">Study mode</span>
+            <p className="max-w-2xl text-sm leading-6 text-slate-600">{sessionActivityCopy}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
+            <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
+            <span className="state-pill state-pill-neutral">{remainingCopy}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:max-w-[18rem]">
+          <article className="study-stage-metric">
+            <p className="metric-label">Known</p>
+            <p className="study-stage-metric-value">
+              {knownCount}
+              <span className="study-stage-metric-unit">/{totalWords}</span>
+            </p>
+          </article>
+          <article className="study-stage-metric">
+            <p className="metric-label">Today</p>
+            <p className="study-stage-metric-value">
+              {reviewedToday}
+              <span className="study-stage-metric-unit">/{dailyGoal}</span>
+            </p>
+          </article>
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          <span>Known progress</span>
+          <span>{knownProgressPct}%</span>
+        </div>
+        <div className="study-stage-track">
+          <div className="study-stage-track-bar" style={{ width: `${knownProgressPct}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const mobileStudySummary = (
+    <div className="flex flex-wrap items-center gap-2 px-1 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-slate-500 md:hidden" aria-label="Study progress summary">
+      <span>{STUDY_FILTER_LABELS[studyFilter]}</span>
+      <span aria-hidden="true" className="opacity-40">/</span>
+      <span>{knownCount}/{totalWords} known</span>
+      <span aria-hidden="true" className="opacity-40">/</span>
+      <span>{reviewedToday}/{dailyGoal} today</span>
+    </div>
+  );
+
   return (
     <section
       id={tabPanelId("study")}
@@ -465,45 +518,8 @@ export const StudyTab = ({
     >
       <div className="study-main-stage">
         <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
-          <div className="study-progress-band rounded-[30px] px-4 py-4 md:px-5 md:py-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <span className="eyebrow">Study mode</span>
-                  <p className="max-w-2xl text-sm leading-6 text-slate-600">{sessionActivityCopy}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
-                  <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
-                  <span className="state-pill state-pill-neutral">{remainingCopy}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:max-w-[18rem]">
-                <article className="study-stage-metric">
-                  <p className="metric-label">Known</p>
-                  <p className="study-stage-metric-value">
-                    {knownCount}
-                    <span className="study-stage-metric-unit">/{totalWords}</span>
-                  </p>
-                </article>
-                <article className="study-stage-metric">
-                  <p className="metric-label">Today</p>
-                  <p className="study-stage-metric-value">
-                    {reviewedToday}
-                    <span className="study-stage-metric-unit">/{dailyGoal}</span>
-                  </p>
-                </article>
-              </div>
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                <span>Known progress</span>
-                <span>{knownProgressPct}%</span>
-              </div>
-              <div className="study-stage-track">
-                <div className="study-stage-track-bar" style={{ width: `${knownProgressPct}%` }} />
-              </div>
-            </div>
+          <div className="hidden md:block">
+            {studyProgressBand}
           </div>
 
           <label className="study-toolbar-compact-filter">
@@ -536,6 +552,8 @@ export const StudyTab = ({
               </button>
             ))}
           </div>
+
+          {mobileStudySummary}
         </div>
 
         <div className="surface-subtle study-card study-card-focus rounded-[32px] px-3 py-3 md:px-4 md:py-4">
@@ -595,13 +613,11 @@ export const StudyTab = ({
 
             <div className="study-card-flip">
               <article className="study-card-face study-card-face-front">
-                <div className="study-card-face-header">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
-                    <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
+                {showHintCounter && (
+                  <div className="flex justify-end">
+                    <span className="study-card-counter">Hint {studyHintLevel}/{studyHints.length}</span>
                   </div>
-                  {showHintCounter && <span className="study-card-counter">Hint {studyHintLevel}/{studyHints.length}</span>}
-                </div>
+                )}
 
                 <div className="study-card-front-body">
                   <p className="study-card-kicker">Finnish</p>
@@ -626,14 +642,6 @@ export const StudyTab = ({
               </article>
 
               <article className="study-card-face study-card-face-back">
-                <div className="study-card-face-header">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="state-pill state-pill-neutral">{TOPIC_LABELS[studyWord.topic]}</span>
-                    <span className="state-pill state-pill-neutral">{POS_LABELS[studyWord.pos]}</span>
-                  </div>
-                  <span className="study-card-counter">{revealPanelContent.label}</span>
-                </div>
-
                 <div className="study-card-back-body">
                   <h2 className="study-word study-card-back-word" lang="fi">
                     {studyWord.fi}
@@ -763,6 +771,10 @@ export const StudyTab = ({
             </div>
           </div>
         )}
+
+        <div className="mt-4 md:hidden">
+          {studyProgressBand}
+        </div>
       </div>
 
       <details className="surface-subtle study-insights mt-5 rounded-[24px] px-4 py-3 md:px-5" open={false}>

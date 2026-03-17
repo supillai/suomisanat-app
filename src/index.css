@@ -1358,12 +1358,6 @@ button:disabled {
   transform: rotateY(180deg);
 }
 
-.study-card-face-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
 
 .study-card-counter {
   display: inline-flex;
