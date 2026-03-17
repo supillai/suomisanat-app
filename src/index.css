@@ -1478,6 +1478,19 @@ button:disabled {
   text-align: right;
 }
 
+.study-swipe-guide-copy {
+  text-align: center;
+}
+
+.study-swipe-guide-compact {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.study-swipe-guide-compact .study-swipe-guide-copy {
+  max-width: 16rem;
+}
+
 @media (max-width: 767px) {
   .study-progress-band {
     padding: 1rem;

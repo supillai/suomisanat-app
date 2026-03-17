@@ -169,14 +169,17 @@ export const StudyTab = ({
   const swipeKnownOpacity = swipeOffset > 0 ? Math.min(swipeOffset / STUDY_SWIPE_THRESHOLD_PX, 1) : 0;
   const swipePracticeOpacity = swipeOffset < 0 ? Math.min(Math.abs(swipeOffset) / STUDY_SWIPE_THRESHOLD_PX, 1) : 0;
   const swipeGuideCopy = swipeIntent === "known"
-    ? "Release to mark known."
+    ? "Release for known"
     : swipeIntent === "practice"
-      ? "Release to mark practice."
-      : canSwipeCard
-        ? "Swipe left for practice or right for known."
-        : !reveal
-          ? "Tap the card or use Reveal Meaning."
-          : "Choose a status to save this card.";
+      ? "Release for practice"
+      : !reveal
+        ? "Tap to reveal"
+        : studyDecision === "known"
+          ? "Known saved"
+          : studyDecision === "practice"
+            ? "Saved for practice"
+            : "Swipe or use buttons below";
+  const showSwipeGuideLabels = canSwipeCard && supportsKeyboardUI;
   const actionBusy = cardAdvanceMotion !== null;
   const useFlatStudyFlip = !supportsKeyboardUI;
   const cardShellStyle = cardAdvanceMotion === "next"
@@ -660,10 +663,10 @@ export const StudyTab = ({
                   </div>
                 </div>
 
-                <div className="study-swipe-guide" aria-live="polite">
-                  <span>Practice</span>
-                  <span>{swipeGuideCopy}</span>
-                  <span>Known</span>
+                <div className={`study-swipe-guide ${showSwipeGuideLabels ? "" : "study-swipe-guide-compact"}`} aria-live="polite">
+                  {showSwipeGuideLabels && <span className="study-swipe-guide-label">Practice</span>}
+                  <span className="study-swipe-guide-copy">{swipeGuideCopy}</span>
+                  {showSwipeGuideLabels && <span className="study-swipe-guide-label">Known</span>}
                 </div>
               </article>
             </div>
