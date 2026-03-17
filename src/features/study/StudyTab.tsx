@@ -178,6 +178,7 @@ export const StudyTab = ({
           ? "Tap the card or use Reveal Meaning."
           : "Choose a status to save this card.";
   const actionBusy = cardAdvanceMotion !== null;
+  const useFlatStudyFlip = !supportsKeyboardUI;
   const cardShellStyle = cardAdvanceMotion === "next"
     ? { transform: "translate3d(8%, -2%, 0) rotate(2deg)", opacity: 0 }
     : cardAdvanceMotion === "skip"
@@ -536,7 +537,7 @@ export const StudyTab = ({
 
         <div className="surface-subtle study-card study-card-focus rounded-[32px] px-3 py-3 md:px-4 md:py-4">
           <div
-            className={`study-card-shell ${reveal ? "study-card-shell-revealed" : ""}`}
+            className={`study-card-shell ${reveal ? "study-card-shell-revealed" : ""} ${useFlatStudyFlip ? "study-card-shell-flat" : "study-card-shell-3d"}`}
             data-swipe-active={swipeActive ? "true" : "false"}
             data-swipe-intent={swipeIntent ?? "idle"}
             onClick={handleStudyCardClick}

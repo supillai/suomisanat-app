@@ -1659,3 +1659,91 @@ button:disabled {
     backdrop-filter: none;
   }
 }
+
+/* Mobile flip fallback */
+@media (pointer: coarse) {
+  .study-card-shell {
+    perspective: none;
+  }
+
+  .study-card-flip {
+    transform: none !important;
+    transform-style: flat;
+    transition: none;
+    isolation: isolate;
+  }
+
+  .study-card-face {
+    transition: opacity 220ms ease, transform 220ms ease;
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+    will-change: opacity, transform;
+  }
+
+  .study-card-face-front {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+    z-index: 2;
+  }
+
+  .study-card-face-back {
+    transform: translate3d(0, 0.8rem, 0) scale(0.985);
+    opacity: 0;
+    z-index: 1;
+  }
+
+  .study-card-shell-revealed .study-card-face-front {
+    transform: translate3d(0, -0.8rem, 0) scale(0.985);
+    opacity: 0;
+    z-index: 1;
+  }
+
+  .study-card-shell-revealed .study-card-face-back {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+    z-index: 2;
+  }
+}
+
+/* Component-driven study flip fallback */
+.study-card-shell-flat {
+  perspective: none;
+}
+
+.study-card-shell-flat .study-card-flip {
+  transform: none !important;
+  transform-style: flat;
+  transition: none;
+  isolation: isolate;
+}
+
+.study-card-shell-flat .study-card-face {
+  transition: opacity 220ms ease, transform 220ms ease;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+  will-change: opacity, transform;
+}
+
+.study-card-shell-flat .study-card-face-front {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+  z-index: 2;
+}
+
+.study-card-shell-flat .study-card-face-back {
+  transform: translate3d(0, 0.8rem, 0) scale(0.985);
+  opacity: 0;
+  z-index: 1;
+}
+
+.study-card-shell-flat.study-card-shell-revealed .study-card-face-front {
+  transform: translate3d(0, -0.8rem, 0) scale(0.985);
+  opacity: 0;
+  z-index: 1;
+}
+
+.study-card-shell-flat.study-card-shell-revealed .study-card-face-back {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+  z-index: 2;
+}
