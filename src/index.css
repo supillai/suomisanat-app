@@ -751,17 +751,22 @@ button:disabled {
   }
 
   html[data-mobile-viewport-mode="compact"] .app-hero {
-    margin-bottom: 0.8rem;
-    padding-top: 0.95rem;
-    padding-bottom: 0.95rem;
+    margin-bottom: 0.65rem;
+    padding-top: 0.78rem;
+    padding-bottom: 0.78rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .hero-top {
-    gap: 0.7rem;
+    gap: 0.45rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .hero-copy {
     gap: 0.25rem;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .app-hero-compact h1 {
+    font-size: 1.65rem;
+    line-height: 1.05;
   }
 
   html[data-mobile-viewport-mode="compact"] .hero-badges {
@@ -809,8 +814,8 @@ button:disabled {
 
   html[data-mobile-viewport-mode="compact"] .study-card,
   html[data-mobile-viewport-mode="compact"] .quiz-card {
-    padding-top: 0.8rem;
-    padding-bottom: 0.8rem;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-card-top {
@@ -848,7 +853,13 @@ button:disabled {
 
   html[data-mobile-viewport-mode="compact"] .study-actions,
   html[data-mobile-viewport-mode="compact"] .quiz-actions {
-    margin-top: 0.65rem;
+    margin-top: 0.45rem;
+    gap: 0.4rem;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-primary-actions-grid,
+  html[data-mobile-viewport-mode="compact"] .study-decision-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
   }
 
@@ -860,10 +871,10 @@ button:disabled {
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray .action-success,
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray .action-warning {
-    min-height: 2.85rem;
-    padding-top: 0.7rem;
-    padding-bottom: 0.7rem;
-    font-size: 0.95rem;
+    min-height: 2.75rem;
+    padding-top: 0.58rem;
+    padding-bottom: 0.58rem;
+    font-size: 0.92rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray .action-ghost {
@@ -879,9 +890,9 @@ button:disabled {
   }
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-panel {
-    min-height: 5rem;
-    padding-top: 0.85rem;
-    padding-bottom: 0.85rem;
+    min-height: 4.2rem;
+    padding-top: 0.72rem;
+    padding-bottom: 0.72rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .metric-value {
@@ -892,8 +903,8 @@ button:disabled {
 @media (max-width: 767px) and (max-height: 740px) {
   html[data-mobile-viewport-mode="compact"] .study-card,
   html[data-mobile-viewport-mode="compact"] .quiz-card {
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-word {
@@ -906,14 +917,19 @@ button:disabled {
 
   html[data-mobile-viewport-mode="compact"] .study-actions,
   html[data-mobile-viewport-mode="compact"] .quiz-actions {
-    margin-top: 0.55rem;
+    margin-top: 0.4rem;
+    gap: 0.35rem;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-primary-actions-grid,
+  html[data-mobile-viewport-mode="compact"] .study-decision-grid {
     gap: 0.45rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-panel {
-    min-height: 4.5rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
+    min-height: 3.8rem;
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray {
@@ -922,9 +938,9 @@ button:disabled {
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray .action-success,
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray .action-warning {
-    min-height: 2.7rem;
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
+    min-height: 2.75rem;
+    padding-top: 0.52rem;
+    padding-bottom: 0.52rem;
   }
 }
 
@@ -1649,11 +1665,11 @@ button:disabled {
 
 @media (max-width: 767px) {
   html[data-mobile-viewport-mode="compact"] .study-card-shell {
-    height: clamp(18.25rem, 41svh, 23.5rem);
+    height: clamp(16.5rem, 39svh, 21.5rem);
   }
 
   html[data-mobile-viewport-mode="compact"] .study-card-back-body .study-reveal-panel {
-    min-height: 4.5rem;
+    min-height: 3.8rem;
   }
 
   html[data-mobile-viewport-mode="compact"] .study-reveal-tray {
@@ -1664,6 +1680,18 @@ button:disabled {
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-card-back-body {
+    gap: 0.45rem;
+    padding-top: 0.45rem;
+  }
+
+  html[data-mobile-viewport-mode="compact"] .study-swipe-guide {
+    margin-top: 0.55rem;
+    gap: 0.2rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
   }
 }
 

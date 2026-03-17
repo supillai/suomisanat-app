@@ -683,7 +683,7 @@ export const StudyTab = ({
 
         {!reveal && (
           <div className="study-actions mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
-            <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.75fr)]">
+            <div className="study-primary-actions-grid grid w-full gap-3 md:max-w-2xl md:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.75fr)]">
               <button
                 ref={studyRevealButtonRef}
                 aria-label="Reveal Meaning"
@@ -718,7 +718,7 @@ export const StudyTab = ({
 
         {reveal && studyDecision === "none" && (
           <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
-            <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-2">
+            <div className="study-decision-grid grid w-full gap-3 md:max-w-2xl md:grid-cols-2">
               <button
                 ref={studyKnownButtonRef}
                 aria-label="Mark Known"
