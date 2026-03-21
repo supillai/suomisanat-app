@@ -41,7 +41,6 @@ export const AppHeader = ({ tab, syncBadgeLabel, onTabChange }: AppHeaderProps) 
     progress: null
   });
   const mobileTabBarRef = useRef<HTMLElement | null>(null);
-  const isStudyFocus = tab === "study";
   const progressSyncIndicator = getProgressSyncIndicator(syncBadgeLabel);
 
   useEffect(() => {
@@ -122,33 +121,18 @@ export const AppHeader = ({ tab, syncBadgeLabel, onTabChange }: AppHeaderProps) 
   return (
     <header
       ref={headerRef}
-      className={
-        isStudyFocus
-          ? "hero-panel app-hero app-hero-compact mb-3 rounded-[28px] px-4 py-3 md:mb-2 md:rounded-[28px] md:px-5 md:py-3.5"
-          : "hero-panel app-hero mb-3 rounded-[28px] px-4 py-3.5 md:mb-3 md:rounded-[30px] md:px-6 md:py-4"
-      }
+      className="hero-panel app-hero app-hero-compact mb-2 rounded-[28px] px-4 py-2 md:mb-1.5 md:rounded-[28px] md:px-5 md:py-2.5"
     >
-      <div className={`flex flex-col ${isStudyFocus ? "gap-2.5 md:gap-3" : "gap-3 md:gap-3.5"}`}>
-        <div className={`hero-top flex flex-col ${isStudyFocus ? "gap-1.5 md:gap-2" : "gap-2 md:gap-2.5"}`}>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 md:gap-3">
+        <div className="hero-top flex flex-col md:flex-row md:items-center gap-1.5 md:gap-2">
           <div className="hero-copy space-y-1">
-            {!isStudyFocus && <p className="eyebrow hidden text-white/80 md:block">Finnish YKI vocabulary trainer</p>}
-            <h1 className={isStudyFocus ? "text-[1.85rem] font-semibold tracking-tight text-white md:text-[2.45rem]" : "text-[2rem] font-semibold tracking-tight text-white md:text-[3.15rem]"}>
-              SuomiSanat
-            </h1>
-            {!isStudyFocus && (
-              <>
-                <p className="max-w-xl text-sm leading-5 text-white/82 md:hidden">Study Finnish vocabulary without leaving the main workspace.</p>
-                <p className="hero-summary hidden max-w-2xl text-sm leading-6 text-white/84 md:block">
-                  Study, quiz, browse, and manage cloud sync from a single compact workspace.
-                </p>
-              </>
-            )}
+            <h1 className="text-[1.85rem] font-semibold tracking-tight text-white md:text-[2.45rem]">SuomiSanat</h1>
           </div>
         </div>
 
         <nav
           ref={mobileTabBarRef}
-          className="hero-nav mobile-tab-bar grid grid-cols-4 gap-2 md:grid-cols-4"
+          className="hero-nav mobile-tab-bar grid grid-cols-4 gap-2 md:flex md:flex-row md:items-center md:justify-end md:gap-2 md:rounded-2xl md:bg-white/10 md:px-1.5 md:py-1"
           role="tablist"
           aria-label="Main sections"
         >
@@ -170,6 +154,7 @@ export const AppHeader = ({ tab, syncBadgeLabel, onTabChange }: AppHeaderProps) 
                 tabIndex={tab === item.id ? 0 : -1}
                 aria-label={item.label}
                 title={syncDescription}
+                data-sync-indicator={item.id === "progress" && progressSyncIndicator ? "true" : undefined}
                 className={`nav-tab ${tab === item.id ? "nav-tab-active" : "nav-tab-idle"}`}
                 onClick={() => onTabChange(item.id)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}

@@ -1,4 +1,4 @@
-export const WORD_TOPICS = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing"] as const;
+export const WORD_TOPICS = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing", "weather", "emotions", "family"] as const;
 
 export type WordTopic = (typeof WORD_TOPICS)[number];
 

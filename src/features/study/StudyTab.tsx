@@ -457,43 +457,38 @@ export const StudyTab = ({
   };
 
   const studyProgressBand = (
-    <div className="study-progress-band rounded-[30px] px-4 py-4 md:px-5 md:py-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <span className="eyebrow">Study mode</span>
-            <p className="max-w-2xl text-sm leading-6 text-slate-600">{sessionActivityCopy}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
-            <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
-            <span className="state-pill state-pill-neutral">{remainingCopy}</span>
-          </div>
+    <div className="study-progress-band rounded-[26px] px-4 py-3 md:rounded-[28px] md:px-5 md:py-3">
+      <div className="study-progress-inline flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
+        <div className="study-progress-chips flex flex-wrap items-center gap-1.5 md:gap-2">
+          <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
+          <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
+          <span className="state-pill state-pill-neutral">{remainingCopy}</span>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:max-w-[18rem]">
-          <article className="study-stage-metric">
+
+        <div className="study-progress-track-row flex flex-1 items-center gap-2.5 md:min-w-[16rem]">
+          <div className="study-inline-progress" aria-label="Known progress">
+            <div className="study-inline-progress-bar" style={{ width: `${knownProgressPct}%` }} />
+          </div>
+          <span className="study-progress-percent text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+            {knownProgressPct}% known
+          </span>
+        </div>
+
+        <div className="study-progress-metrics flex items-center gap-3 md:gap-4">
+          <article className="study-compact-metric">
             <p className="metric-label">Known</p>
-            <p className="study-stage-metric-value">
+            <p className="metric-value-sm">
               {knownCount}
               <span className="study-stage-metric-unit">/{totalWords}</span>
             </p>
           </article>
-          <article className="study-stage-metric">
+          <article className="study-compact-metric">
             <p className="metric-label">Today</p>
-            <p className="study-stage-metric-value">
+            <p className="metric-value-sm">
               {reviewedToday}
               <span className="study-stage-metric-unit">/{dailyGoal}</span>
             </p>
           </article>
-        </div>
-      </div>
-      <div className="mt-4 space-y-2">
-        <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          <span>Known progress</span>
-          <span>{knownProgressPct}%</span>
-        </div>
-        <div className="study-stage-track">
-          <div className="study-stage-track-bar" style={{ width: `${knownProgressPct}%` }} />
         </div>
       </div>
     </div>
@@ -514,10 +509,10 @@ export const StudyTab = ({
       id={tabPanelId("study")}
       role="tabpanel"
       aria-labelledby={tabButtonId("study")}
-      className="surface-card study-shell study-shell-focus rounded-[28px] px-4 py-4 md:px-5 md:py-5"
+      className="surface-card study-shell study-shell-focus rounded-[28px] px-4 py-2.5 md:px-5 md:py-3.5"
     >
       <div className="study-main-stage">
-        <div className="study-toolbar mb-4 space-y-3" role="group" aria-label="Study mode">
+        <div className="study-toolbar mb-2 space-y-2" role="group" aria-label="Study mode">
           <div className="hidden md:block">
             {studyProgressBand}
           </div>
@@ -538,7 +533,8 @@ export const StudyTab = ({
             </select>
           </label>
 
-          <div className="study-toolbar-default-filters touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+          <div className="study-toolbar-default-filters touch-scroll-row flex items-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+            <span className="study-filter-label hidden md:inline-flex">Study mode</span>
             {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
               <button
                 key={mode}
@@ -551,12 +547,13 @@ export const StudyTab = ({
                 <span className="hidden md:inline">{STUDY_FILTER_LABELS[mode]}</span>
               </button>
             ))}
+            <span className="study-filter-note hidden lg:inline-flex">{sessionActivityCopy}</span>
           </div>
 
           {mobileStudySummary}
         </div>
 
-        <div className="surface-subtle study-card study-card-focus rounded-[32px] px-3 py-3 md:px-4 md:py-4">
+        <div className="surface-subtle study-card study-card-focus rounded-[32px] px-3 py-2.5 md:px-4 md:py-3.5">
           <div
             className={`study-card-shell ${reveal ? "study-card-shell-revealed" : ""} ${useFlatStudyFlip ? "study-card-shell-flat" : "study-card-shell-3d"}`}
             data-swipe-active={swipeActive ? "true" : "false"}
@@ -625,6 +622,7 @@ export const StudyTab = ({
                     {studyWord.fi}
                   </h2>
                   <p className="study-front-prompt">Think of the meaning before you flip the card.</p>
+                  <p className="study-flip-cue">Tap to flip or press space</p>
 
                   {currentHint && (
                     <div className="study-latest-hint mx-auto w-full max-w-xl text-left">
@@ -636,9 +634,6 @@ export const StudyTab = ({
                   )}
                 </div>
 
-                <div className="study-card-front-foot">
-                  <span>Tap the card or use Reveal Meaning</span>
-                </div>
               </article>
 
               <article className="study-card-face study-card-face-back">
@@ -683,7 +678,7 @@ export const StudyTab = ({
 
         {!reveal && (
           <div className="study-actions mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
-            <div className="study-primary-actions-grid grid w-full gap-3 md:max-w-2xl md:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.75fr)]">
+            <div className="study-primary-actions-grid grid w-full gap-2.5 sm:grid-cols-2 md:max-w-3xl md:grid-cols-[minmax(0,1.3fr)_minmax(12rem,0.8fr)_auto] md:items-center">
               <button
                 ref={studyRevealButtonRef}
                 aria-label="Reveal Meaning"
@@ -703,22 +698,22 @@ export const StudyTab = ({
                 <span className="md:hidden">{studyHintLevel >= studyHints.length ? "Hints Used" : "Hint"}</span>
                 <span className="hidden md:inline">{studyHintLevel === 0 ? "Show Hint" : studyHintLevel >= studyHints.length ? "All Hints Shown" : "Show Another Hint"}</span>
               </button>
+              <button
+                type="button"
+                aria-label="Skip for Now"
+                className="study-skip-link study-inline-skip justify-self-start text-sm font-semibold md:justify-self-end"
+                onClick={() => queueNextStudyWord("skip")}
+              >
+                <span className="md:hidden">Skip for now</span>
+                <span className="hidden md:inline">Skip for Now</span>
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Skip for Now"
-              className="study-skip-link text-sm font-semibold"
-              onClick={() => queueNextStudyWord("skip")}
-            >
-              <span className="md:hidden">Skip for now</span>
-              <span className="hidden md:inline">Skip for Now</span>
-            </button>
           </div>
         )}
 
         {reveal && studyDecision === "none" && (
           <div ref={studyRevealActionsRef} className="study-actions study-reveal-tray mt-4 flex flex-col gap-2 md:mx-auto md:max-w-3xl md:items-center">
-            <div className="study-decision-grid grid w-full gap-3 md:max-w-2xl md:grid-cols-2">
+            <div className="study-decision-grid grid w-full gap-2.5 sm:grid-cols-2 md:max-w-3xl md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
               <button
                 ref={studyKnownButtonRef}
                 aria-label="Mark Known"
@@ -738,16 +733,16 @@ export const StudyTab = ({
                 <span className="md:hidden">Practice</span>
                 <span className="hidden md:inline">Practice</span>
               </button>
+              <button
+                type="button"
+                aria-label="Skip Without Saving"
+                className="study-skip-link study-inline-skip justify-self-start text-sm font-semibold md:justify-self-end"
+                onClick={() => queueNextStudyWord("skip")}
+              >
+                <span className="md:hidden">Skip</span>
+                <span className="hidden md:inline">Skip Without Saving</span>
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Skip Without Saving"
-              className="study-skip-link text-sm font-semibold"
-              onClick={() => queueNextStudyWord("skip")}
-            >
-              <span className="md:hidden">Skip</span>
-              <span className="hidden md:inline">Skip Without Saving</span>
-            </button>
           </div>
         )}
 
@@ -905,3 +900,5 @@ export const StudyTab = ({
     </section>
   );
 };
+
+
