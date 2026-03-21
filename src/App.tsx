@@ -15,6 +15,14 @@ const AppFrame = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
+const AppFooter = () => (
+  <footer className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-600 md:mt-8">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <span>SuomiSanat — offline-first Finnish vocab trainer.</span>
+    </div>
+  </footer>
+);
+
 const TabLoadingCard = ({ label }: { label: string }) => (
   <section className="surface-card loading-panel rounded-[28px] px-4 py-5 md:px-6 md:py-8">
     <p className="eyebrow">Loading</p>
@@ -119,6 +127,8 @@ const AppShell = () => {
         {tab === "list" && <WordListTabScreen />}
         {tab === "progress" && <ProgressTabScreen />}
       </Suspense>
+
+      <AppFooter />
     </AppFrame>
   );
 };
@@ -154,6 +164,7 @@ export default function App() {
     </AppStateProvider>
   );
 }
+
 
 
 
