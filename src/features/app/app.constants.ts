@@ -1,4 +1,4 @@
-﻿import { WORD_POS_OPTIONS, WORD_TOPICS } from "../../types";
+import { WORD_POS_OPTIONS, WORD_TOPICS } from "../../types";
 import type { StudyFilter, Tab } from "./app.types";
 
 export const DEFAULT_DAILY_GOAL = 20;
@@ -23,7 +23,10 @@ export const TOPIC_LABELS = {
   health: "Health",
   work: "Work",
   verbs: "Verbs",
-  describing: "Describing"
+  describing: "Describing",
+  weather: "Weather",
+  emotions: "Emotions",
+  family: "Family"
 } as const;
 
 export const POS_LABELS = {
