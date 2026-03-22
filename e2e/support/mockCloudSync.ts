@@ -34,6 +34,7 @@ type MockSyncScenario = {
   localDailyGoal: number;
   serverProgressRows: MockServerProgressRow[];
   serverDailyGoal: number | null;
+  progressUpsertDelayMs?: number;
 };
 
 export const installMockCloudSync = async (page: Page, scenario: MockSyncScenario): Promise<void> => {
@@ -64,6 +65,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
       session: clone(initialScenario.session),
       serverProgressRows: clone(initialScenario.serverProgressRows),
       serverDailyGoal: initialScenario.serverDailyGoal,
+      pendingProgressUpserts: 0,
       upsertLog: [] as Array<{ table: string; payload: unknown }>
     };
 
@@ -124,6 +126,12 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
               last_reviewed: string | null;
               updated_at: string;
             }>) => {
+              state.pendingProgressUpserts += 1;
+
+              if (typeof initialScenario.progressUpsertDelayMs === "number" && initialScenario.progressUpsertDelayMs > 0) {
+                await new Promise((resolve) => window.setTimeout(resolve, initialScenario.progressUpsertDelayMs));
+              }
+
               const nextRows = new Map(state.serverProgressRows.map((row) => [row.word_id, row]));
 
               for (const row of rows) {
@@ -132,6 +140,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
 
               state.serverProgressRows = [...nextRows.values()];
               state.upsertLog.push({ table, payload: clone(rows) });
+              state.pendingProgressUpserts -= 1;
               return { error: null };
             }
           };

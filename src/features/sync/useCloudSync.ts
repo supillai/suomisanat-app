@@ -79,6 +79,7 @@ export const useCloudSync = ({
   const hasHydratedServerRef = useRef(hasHydratedServer);
   const flushSyncInFlightRef = useRef(false);
   const syncConflictRef = useRef<SyncConflict | null>(syncConflict);
+  const pendingFlushAfterSaveRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -137,6 +138,7 @@ export const useCloudSync = ({
     if (!client || !userId || !hasHydratedServerRef.current || flushSyncInFlightRef.current || syncConflictRef.current) return;
 
     flushSyncInFlightRef.current = true;
+    pendingFlushAfterSaveRef.current = false;
 
     if (progressSaveTimerRef.current !== null) {
       window.clearTimeout(progressSaveTimerRef.current);
@@ -152,6 +154,8 @@ export const useCloudSync = ({
     const settingsRow = toSettingsUpsert(userId, dailyGoalRef.current);
 
     setSyncStatus("saving");
+
+    let saveSucceeded = false;
 
     try {
       const [progressResponse, settingsResponse] = await Promise.all([
@@ -174,14 +178,24 @@ export const useCloudSync = ({
       }
 
       setSyncError(null);
-      setSyncStatus("synced");
       setLastSyncedAt(new Date().toISOString());
+      saveSucceeded = true;
+      setSyncStatus(pendingFlushAfterSaveRef.current ? "saving" : "synced");
     } finally {
       flushSyncInFlightRef.current = false;
+
+      if (saveSucceeded && pendingFlushAfterSaveRef.current && !syncConflictRef.current) {
+        void flushSyncNow();
+      }
     }
   }, [dailyGoalRef, progressMapRef]);
 
   const scheduleSyncFlush = useCallback((kind: "progress" | "settings"): void => {
+    if (flushSyncInFlightRef.current) {
+      pendingFlushAfterSaveRef.current = true;
+      return;
+    }
+
     if (progressSaveTimerRef.current !== null || settingsSaveTimerRef.current !== null) return;
 
     const timerRef = kind === "progress" ? progressSaveTimerRef : settingsSaveTimerRef;

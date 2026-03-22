@@ -180,3 +180,86 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   expect(cloudState?.settingsWrites).toContain(15);
 });
 
+
+
+test("cloud sync flushes changes made while an earlier save is still running", async ({ page }) => {
+  await installMockCloudSync(page, {
+    session: {
+      user: {
+        id: "user-1",
+        email: "learner@example.com"
+      }
+    },
+    localProgress: {},
+    localDailyGoal: 10,
+    serverProgressRows: [],
+    serverDailyGoal: 10,
+    progressUpsertDelayMs: 1500
+  });
+
+  await page.goto("/");
+  await waitForMockConflictState(page);
+
+  await page.getByRole("tab", { name: "Word List" }).click();
+
+  const knownButtons = page.getByRole("button", { name: "Known" });
+  await knownButtons.nth(0).click();
+
+  await page.waitForFunction(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          pendingProgressUpserts: number;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    return state?.pendingProgressUpserts === 1;
+  });
+
+  await knownButtons.nth(1).click();
+
+  await page.waitForFunction(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          pendingProgressUpserts: number;
+          serverProgressRows: Array<{ word_id: number; known: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    return (
+      state?.pendingProgressUpserts === 0 &&
+      state.serverProgressRows.length === 2 &&
+      state.upsertLog.filter((entry) => entry.table === "user_progress").length >= 2
+    );
+  });
+
+  const cloudState = await page.evaluate(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          serverProgressRows: Array<{ word_id: number; known: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    if (!state) return null;
+
+    return {
+      serverProgressRows: state.serverProgressRows
+        .map((row) => ({ word_id: row.word_id, known: row.known }))
+        .sort((first, second) => first.word_id - second.word_id),
+      progressWrites: state.upsertLog.filter((entry) => entry.table === "user_progress").length
+    };
+  });
+
+  expect(cloudState).not.toBeNull();
+  expect(cloudState?.serverProgressRows).toHaveLength(2);
+  expect(cloudState?.serverProgressRows.every((row) => row.known === true)).toBe(true);
+  expect(new Set(cloudState?.serverProgressRows.map((row) => row.word_id)).size).toBe(2);
+  expect(cloudState?.progressWrites).toBeGreaterThanOrEqual(2);
+});
