@@ -1,12 +1,13 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { getSupabaseClient, hasSupabaseConfig } from "../../lib/supabase";
+import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from "../../lib/supabase";
 import type { ProgressMap } from "../../types";
 import { DEFAULT_DAILY_GOAL, SYNC_DEBOUNCE_MS } from "../app/app.constants";
 import { hasTrackedProgress, summarizeProgress } from "../progress/progress.utils";
 import type { ProgressSummary } from "../progress/progress.utils";
 import {
+  createBackgroundSyncRequests,
   formatSyncTimestamp,
   progressMapsEqual,
   toProgressMapFromRows,
@@ -80,6 +81,7 @@ export const useCloudSync = ({
   const flushSyncInFlightRef = useRef(false);
   const syncConflictRef = useRef<SyncConflict | null>(syncConflict);
   const pendingFlushAfterSaveRef = useRef(false);
+  const hasPendingCloudWriteRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -115,6 +117,7 @@ export const useCloudSync = ({
     skipNextProgressSyncRef.current = true;
     skipNextSettingsSyncRef.current = true;
     replaceSnapshot(nextProgress, nextDailyGoal);
+    hasPendingCloudWriteRef.current = false;
     setHasHydratedServer(true);
     setLastSyncedAt(new Date().toISOString());
     setSyncStatus("synced");
@@ -178,6 +181,7 @@ export const useCloudSync = ({
       }
 
       setSyncError(null);
+      hasPendingCloudWriteRef.current = pendingFlushAfterSaveRef.current;
       setLastSyncedAt(new Date().toISOString());
       saveSucceeded = true;
       setSyncStatus(pendingFlushAfterSaveRef.current ? "saving" : "synced");
@@ -187,6 +191,43 @@ export const useCloudSync = ({
       if (saveSucceeded && pendingFlushAfterSaveRef.current && !syncConflictRef.current) {
         void flushSyncNow();
       }
+    }
+  }, [dailyGoalRef, progressMapRef]);
+
+  const flushSyncInBackground = useCallback((): void => {
+    const supabaseConfig = getSupabaseConfig();
+    const nextSession = sessionRef.current;
+    const userId = nextSession?.user.id;
+    const accessToken = nextSession?.access_token;
+    const shouldAttemptBackgroundSync =
+      hasPendingCloudWriteRef.current ||
+      flushSyncInFlightRef.current ||
+      progressSaveTimerRef.current !== null ||
+      settingsSaveTimerRef.current !== null;
+
+    if (
+      !supabaseConfig ||
+      !userId ||
+      !accessToken ||
+      !hasHydratedServerRef.current ||
+      syncConflictRef.current ||
+      !shouldAttemptBackgroundSync ||
+      typeof fetch !== "function"
+    ) {
+      return;
+    }
+
+    const requests = createBackgroundSyncRequests({
+      supabaseUrl: supabaseConfig.url,
+      publishableKey: supabaseConfig.publishableKey,
+      accessToken,
+      userId,
+      map: progressMapRef.current,
+      goal: dailyGoalRef.current
+    });
+
+    for (const request of requests) {
+      void fetch(request.url, request.init).catch(() => undefined);
     }
   }, [dailyGoalRef, progressMapRef]);
 
@@ -285,6 +326,7 @@ export const useCloudSync = ({
       data: { subscription }
     } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      hasPendingCloudWriteRef.current = false;
       setSyncError(null);
       setSyncConflict(null);
       setSyncStatus(nextSession ? "loading" : "idle");
@@ -303,6 +345,7 @@ export const useCloudSync = ({
 
     const userId = session?.user.id;
     if (!userId) {
+      hasPendingCloudWriteRef.current = false;
       setHasHydratedServer(false);
       setSyncConflict(null);
       setSyncStatus("idle");
@@ -351,6 +394,7 @@ export const useCloudSync = ({
       const goalDiffers = localDailyGoal !== serverDailyGoal;
 
       if (hasLocalData && hasServerData && (progressDiffers || goalDiffers)) {
+        hasPendingCloudWriteRef.current = false;
         setSyncConflict({
           mode: "different-data",
           serverProgress,
@@ -362,6 +406,7 @@ export const useCloudSync = ({
       }
 
       if (hasLocalData && !hasServerData) {
+        hasPendingCloudWriteRef.current = false;
         setSyncConflict({
           mode: "cloud-empty",
           serverProgress,
@@ -397,6 +442,7 @@ export const useCloudSync = ({
       return;
     }
 
+    hasPendingCloudWriteRef.current = true;
     scheduleSyncFlush("progress");
   }, [hasHydratedServer, progressMap, scheduleSyncFlush, session?.user.id]);
 
@@ -412,6 +458,7 @@ export const useCloudSync = ({
       return;
     }
 
+    hasPendingCloudWriteRef.current = true;
     scheduleSyncFlush("settings");
   }, [dailyGoal, hasHydratedServer, scheduleSyncFlush, session?.user.id]);
 
@@ -420,11 +467,13 @@ export const useCloudSync = ({
 
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "hidden") {
+        flushSyncInBackground();
         void flushSyncNow();
       }
     };
 
     const handlePageHide = (): void => {
+      flushSyncInBackground();
       void flushSyncNow();
     };
 
@@ -435,7 +484,7 @@ export const useCloudSync = ({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [flushSyncNow]);
+  }, [flushSyncInBackground, flushSyncNow]);
 
   const sendMagicLink = async (): Promise<void> => {
     const client = getSupabaseClient();
@@ -566,9 +615,3 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
-
-
-
-
-
-

@@ -48,3 +48,14 @@ export const getSupabaseClient = (): AppSupabaseClient | null => {
 };
 
 export const hasSupabaseConfig = (): boolean => Boolean(getE2eSupabaseClient()) || hasConfiguredSupabase;
+
+export const getSupabaseConfig = (): { url: string; publishableKey: string } | null => {
+  if (!hasConfiguredSupabase) {
+    return null;
+  }
+
+  return {
+    url: supabaseUrl!,
+    publishableKey: supabasePublishableKey!
+  };
+};

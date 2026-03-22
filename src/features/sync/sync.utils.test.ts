@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProgressMap } from "../../types";
-import { mergeProgressMaps, progressMapsEqual, toProgressMapFromRows, toProgressUpserts, toSettingsUpsert } from "./sync.utils";
+import { createBackgroundSyncRequests, mergeProgressMaps, progressMapsEqual, toProgressMapFromRows, toProgressUpserts, toSettingsUpsert } from "./sync.utils";
 
 describe("sync.utils", () => {
   it("merges local and server progress while preferring the freshest state flags", () => {
@@ -133,5 +133,53 @@ describe("sync.utils", () => {
     });
 
     vi.useRealTimers();
+  });
+
+  it("creates keepalive background sync requests in safe chunks", () => {
+    const progressMap: ProgressMap = {};
+
+    for (let wordId = 1; wordId <= 205; wordId += 1) {
+      progressMap[wordId] = {
+        seen: wordId,
+        correct: wordId,
+        wrong: 0,
+        known: wordId % 2 === 0,
+        needsPractice: wordId % 2 !== 0,
+        lastReviewed: "2026-03-15",
+        updatedAt: "2026-03-15T11:30:00.000Z"
+      };
+    }
+
+    const requests = createBackgroundSyncRequests({
+      supabaseUrl: "https://example.supabase.co",
+      publishableKey: "public-key",
+      accessToken: "token-123",
+      userId: "user-1",
+      map: progressMap,
+      goal: 12
+    });
+
+    expect(requests).toHaveLength(4);
+    expect(requests[0]).toMatchObject({
+      url: "https://example.supabase.co/rest/v1/user_settings?on_conflict=user_id",
+      init: expect.objectContaining({
+        method: "POST",
+        keepalive: true
+      })
+    });
+    expect(requests[1]?.url).toBe("https://example.supabase.co/rest/v1/user_progress?on_conflict=user_id,word_id");
+    expect(requests[2]?.url).toBe("https://example.supabase.co/rest/v1/user_progress?on_conflict=user_id,word_id");
+    expect(requests[3]?.url).toBe("https://example.supabase.co/rest/v1/user_progress?on_conflict=user_id,word_id");
+    expect(JSON.parse(String(requests[0]?.init.body))).toEqual([
+      expect.objectContaining({ user_id: "user-1", daily_goal: 12 })
+    ]);
+    expect(JSON.parse(String(requests[1]?.init.body))).toHaveLength(100);
+    expect(JSON.parse(String(requests[2]?.init.body))).toHaveLength(100);
+    expect(JSON.parse(String(requests[3]?.init.body))).toHaveLength(5);
+    expect(requests[1]?.init.headers).toMatchObject({
+      apikey: "public-key",
+      Authorization: "Bearer token-123",
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    });
   });
 });

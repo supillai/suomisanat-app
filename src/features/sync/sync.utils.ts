@@ -2,6 +2,13 @@ import type { ProgressMap, ProgressState } from "../../types";
 import { safeInt, safeTimestamp } from "../progress/progress.utils";
 import type { UserProgressRow, UserProgressUpsert, UserSettingsUpsert } from "./sync.types";
 
+const BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE = 100;
+
+export type BackgroundSyncRequest = {
+  url: string;
+  init: RequestInit;
+};
+
 const laterIsoDate = (first: string | null, second: string | null): string | null => {
   if (!first) return second;
   if (!second) return first;
@@ -148,6 +155,56 @@ export const toSettingsUpsert = (userId: string, goal: number): UserSettingsUpse
   daily_goal: Math.max(1, Math.round(goal)),
   updated_at: new Date().toISOString()
 });
+
+export const createBackgroundSyncRequests = ({
+  supabaseUrl,
+  publishableKey,
+  accessToken,
+  userId,
+  map,
+  goal
+}: {
+  supabaseUrl: string;
+  publishableKey: string;
+  accessToken: string;
+  userId: string;
+  map: ProgressMap;
+  goal: number;
+}): BackgroundSyncRequest[] => {
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: publishableKey,
+    Authorization: `Bearer ${accessToken}`,
+    Prefer: "resolution=merge-duplicates,return=minimal"
+  };
+  const settingsRows = [toSettingsUpsert(userId, goal)];
+  const requests: BackgroundSyncRequest[] = [
+    {
+      url: `${supabaseUrl}/rest/v1/user_settings?on_conflict=user_id`,
+      init: {
+        method: "POST",
+        headers,
+        body: JSON.stringify(settingsRows),
+        keepalive: true
+      }
+    }
+  ];
+  const progressRows = toProgressUpserts(userId, map);
+
+  for (let start = 0; start < progressRows.length; start += BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE) {
+    requests.push({
+      url: `${supabaseUrl}/rest/v1/user_progress?on_conflict=user_id,word_id`,
+      init: {
+        method: "POST",
+        headers,
+        body: JSON.stringify(progressRows.slice(start, start + BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE)),
+        keepalive: true
+      }
+    });
+  }
+
+  return requests;
+};
 
 export const formatSyncTimestamp = (value: string | null): string => {
   if (!value) return "Not synced yet";
