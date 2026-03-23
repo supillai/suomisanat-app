@@ -65,6 +65,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
       session: clone(initialScenario.session),
       serverProgressRows: clone(initialScenario.serverProgressRows),
       serverDailyGoal: initialScenario.serverDailyGoal,
+      getSessionCalls: 0,
       pendingProgressUpserts: 0,
       upsertLog: [] as Array<{ table: string; payload: unknown }>
     };
@@ -78,7 +79,10 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
 
     const supabase = {
       auth: {
-        getSession: async () => ok({ session: state.session }),
+        getSession: async () => {
+          state.getSessionCalls += 1;
+          return ok({ session: state.session });
+        },
         onAuthStateChange: (callback: (event: string, session: unknown) => void) => {
           authListeners.push(callback);
 
@@ -165,3 +169,4 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
     (window as Window & { __SUOMISANAT_E2E_SYNC_STATE__?: unknown }).__SUOMISANAT_E2E_SYNC_STATE__ = state;
   }, scenario);
 };
+

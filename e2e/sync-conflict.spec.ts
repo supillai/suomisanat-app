@@ -7,10 +7,11 @@ const waitForMockConflictState = async (page: Page): Promise<void> => {
     const state = (window as Window & {
       __SUOMISANAT_E2E_SYNC_STATE__?: {
         session?: { user?: { id?: string } } | null;
+        getSessionCalls?: number;
       };
     }).__SUOMISANAT_E2E_SYNC_STATE__;
 
-    return state?.session?.user?.id === "user-1";
+    return state?.session?.user?.id === "user-1" && (state.getSessionCalls ?? 0) > 0;
   });
 };
 
@@ -180,7 +181,124 @@ test("cloud sync conflict can import browser data into the cloud", async ({ page
   expect(cloudState?.settingsWrites).toContain(15);
 });
 
+test("cloud sync flushes a word change made before initial hydration finishes", async ({ page }) => {
+  await installMockCloudSync(page, {
+    session: {
+      user: {
+        id: "user-1",
+        email: "learner@example.com"
+      }
+    },
+    localProgress: {},
+    localDailyGoal: 10,
+    serverProgressRows: [],
+    serverDailyGoal: 10
+  });
 
+  await page.addInitScript(() => {
+    const statefulWindow = window as Window & {
+      __SUOMISANAT_E2E_SUPABASE__?: {
+        from: (table: "user_progress" | "user_settings") => {
+          select: () => unknown;
+        };
+      };
+    };
+
+    const mockClient = statefulWindow.__SUOMISANAT_E2E_SUPABASE__;
+    if (!mockClient) return;
+
+    const originalFrom = mockClient.from.bind(mockClient);
+    mockClient.from = (table) => {
+      const result = originalFrom(table);
+
+      if (table === "user_progress") {
+        return {
+          ...result,
+          select: () => {
+            const selectResult = result.select() as { eq: (...args: unknown[]) => Promise<unknown> | unknown };
+
+            return {
+              ...selectResult,
+              eq: async (...args: unknown[]) => {
+                await new Promise((resolve) => window.setTimeout(resolve, 1500));
+                return selectResult.eq(...args);
+              }
+            };
+          }
+        };
+      }
+
+      return {
+        ...result,
+        select: () => {
+          const selectResult = result.select() as { eq: (...args: unknown[]) => { maybeSingle: () => Promise<unknown> | unknown } };
+
+          return {
+            ...selectResult,
+            eq: (...args: unknown[]) => {
+              const eqResult = selectResult.eq(...args);
+
+              return {
+                ...eqResult,
+                maybeSingle: async () => {
+                  await new Promise((resolve) => window.setTimeout(resolve, 1500));
+                  return eqResult.maybeSingle();
+                }
+              };
+            }
+          };
+        }
+      };
+    };
+  });
+
+  await page.goto("/");
+  await waitForMockConflictState(page);
+
+  await page.getByRole("tab", { name: "Word List" }).click();
+  await page.getByRole("button", { name: "Known" }).first().click();
+
+  await page.waitForFunction(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          serverProgressRows: Array<{ word_id: number; known: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    return (
+      Boolean(state) &&
+      state.serverProgressRows.length === 1 &&
+      state.upsertLog.some((entry) => entry.table === "user_progress")
+    );
+  }, undefined, { timeout: 10000 });
+
+  const cloudState = await page.evaluate(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          serverProgressRows: Array<{ word_id: number; known: boolean | null; needs_practice: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    if (!state) return null;
+
+    return {
+      serverProgressRows: state.serverProgressRows,
+      progressWrites: state.upsertLog.filter((entry) => entry.table === "user_progress").length
+    };
+  });
+
+  expect(cloudState).not.toBeNull();
+  expect(cloudState?.progressWrites).toBeGreaterThanOrEqual(1);
+  expect(cloudState?.serverProgressRows).toHaveLength(1);
+  expect(cloudState?.serverProgressRows[0]).toEqual(expect.objectContaining({ known: true, needs_practice: false }));
+  expect(Number.isFinite(cloudState?.serverProgressRows[0]?.word_id)).toBe(true);
+});
 
 test("cloud sync flushes changes made while an earlier save is still running", async ({ page }) => {
   await installMockCloudSync(page, {
@@ -263,3 +381,6 @@ test("cloud sync flushes changes made while an earlier save is still running", a
   expect(new Set(cloudState?.serverProgressRows.map((row) => row.word_id)).size).toBe(2);
   expect(cloudState?.progressWrites).toBeGreaterThanOrEqual(2);
 });
+
+
+

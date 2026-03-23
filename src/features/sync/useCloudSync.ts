@@ -82,6 +82,9 @@ export const useCloudSync = ({
   const syncConflictRef = useRef<SyncConflict | null>(syncConflict);
   const pendingFlushAfterSaveRef = useRef(false);
   const hasPendingCloudWriteRef = useRef(false);
+  const hydrationBaselineProgressRef = useRef<ProgressMap>({});
+  const hydrationBaselineDailyGoalRef = useRef(DEFAULT_DAILY_GOAL);
+  const pendingFlushAfterHydrationRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -113,14 +116,21 @@ export const useCloudSync = ({
     }
   }, [syncConflict]);
 
-  const applyHydratedState = useCallback((nextProgress: ProgressMap, nextDailyGoal: number): void => {
+  const applyHydratedState = useCallback((
+    nextProgress: ProgressMap,
+    nextDailyGoal: number,
+    options?: { keepPendingCloudWrite?: boolean }
+  ): void => {
+    const keepPendingCloudWrite = Boolean(options?.keepPendingCloudWrite);
+
     skipNextProgressSyncRef.current = true;
     skipNextSettingsSyncRef.current = true;
     replaceSnapshot(nextProgress, nextDailyGoal);
-    hasPendingCloudWriteRef.current = false;
+    hasPendingCloudWriteRef.current = keepPendingCloudWrite;
+    pendingFlushAfterHydrationRef.current = keepPendingCloudWrite;
     setHasHydratedServer(true);
-    setLastSyncedAt(new Date().toISOString());
-    setSyncStatus("synced");
+    setLastSyncedAt((current) => (keepPendingCloudWrite ? current : new Date().toISOString()));
+    setSyncStatus(keepPendingCloudWrite ? "idle" : "synced");
   }, [replaceSnapshot]);
 
   useEffect(() => {
@@ -246,6 +256,14 @@ export const useCloudSync = ({
     }, SYNC_DEBOUNCE_MS);
   }, [flushSyncNow]);
 
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || !hasHydratedServer || !pendingFlushAfterHydrationRef.current || syncConflict) return;
+
+    pendingFlushAfterHydrationRef.current = false;
+    scheduleSyncFlush("progress");
+  }, [hasHydratedServer, scheduleSyncFlush, session?.user.id, syncConflict]);
+
   const resolveSyncConflict = async (choice: SyncResolutionChoice): Promise<void> => {
     const client = getSupabaseClient();
     const userId = session?.user.id;
@@ -327,6 +345,9 @@ export const useCloudSync = ({
     } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       hasPendingCloudWriteRef.current = false;
+      pendingFlushAfterHydrationRef.current = false;
+      hydrationBaselineProgressRef.current = progressMapRef.current;
+      hydrationBaselineDailyGoalRef.current = dailyGoalRef.current;
       setSyncError(null);
       setSyncConflict(null);
       setSyncStatus(nextSession ? "loading" : "idle");
@@ -337,7 +358,7 @@ export const useCloudSync = ({
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [supabaseConfigured]);
+  }, [dailyGoalRef, progressMapRef, supabaseConfigured]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -346,6 +367,9 @@ export const useCloudSync = ({
     const userId = session?.user.id;
     if (!userId) {
       hasPendingCloudWriteRef.current = false;
+      pendingFlushAfterHydrationRef.current = false;
+      hydrationBaselineProgressRef.current = {};
+      hydrationBaselineDailyGoalRef.current = DEFAULT_DAILY_GOAL;
       setHasHydratedServer(false);
       setSyncConflict(null);
       setSyncStatus("idle");
@@ -357,6 +381,12 @@ export const useCloudSync = ({
     const loadServerData = async (): Promise<void> => {
       setSyncStatus("loading");
       setSyncError(null);
+
+      const baselineProgress = progressMapRef.current;
+      const baselineDailyGoal = dailyGoalRef.current;
+      hydrationBaselineProgressRef.current = baselineProgress;
+      hydrationBaselineDailyGoalRef.current = baselineDailyGoal;
+      pendingFlushAfterHydrationRef.current = false;
 
       const [progressResponse, settingsResponse] = await Promise.all([
         client
@@ -384,17 +414,20 @@ export const useCloudSync = ({
 
       const serverRows = (progressResponse.data ?? []) as UserProgressRow[];
       const serverProgress = toProgressMapFromRows(serverRows);
-      const localProgress = progressMapRef.current;
-      const localDailyGoal = dailyGoalRef.current;
+      const currentLocalProgress = progressMapRef.current;
+      const currentLocalDailyGoal = dailyGoalRef.current;
       const hasServerGoal = Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0;
       const serverDailyGoal = hasServerGoal ? Math.round(Number(settingsResponse.data?.daily_goal)) : DEFAULT_DAILY_GOAL;
       const hasServerData = hasTrackedProgress(serverProgress) || hasServerGoal;
-      const hasLocalData = hasTrackedProgress(localProgress) || localDailyGoal !== DEFAULT_DAILY_GOAL;
-      const progressDiffers = !progressMapsEqual(localProgress, serverProgress);
-      const goalDiffers = localDailyGoal !== serverDailyGoal;
+      const hasBaselineLocalData = hasTrackedProgress(baselineProgress) || baselineDailyGoal !== DEFAULT_DAILY_GOAL;
+      const baselineProgressDiffers = !progressMapsEqual(baselineProgress, serverProgress);
+      const baselineGoalDiffers = baselineDailyGoal !== serverDailyGoal;
+      const localChangedDuringHydration =
+        !progressMapsEqual(currentLocalProgress, baselineProgress) || currentLocalDailyGoal !== baselineDailyGoal;
 
-      if (hasLocalData && hasServerData && (progressDiffers || goalDiffers)) {
+      if (hasBaselineLocalData && hasServerData && (baselineProgressDiffers || baselineGoalDiffers)) {
         hasPendingCloudWriteRef.current = false;
+        pendingFlushAfterHydrationRef.current = false;
         setSyncConflict({
           mode: "different-data",
           serverProgress,
@@ -405,8 +438,9 @@ export const useCloudSync = ({
         return;
       }
 
-      if (hasLocalData && !hasServerData) {
+      if (hasBaselineLocalData && !hasServerData) {
         hasPendingCloudWriteRef.current = false;
+        pendingFlushAfterHydrationRef.current = false;
         setSyncConflict({
           mode: "cloud-empty",
           serverProgress,
@@ -418,9 +452,17 @@ export const useCloudSync = ({
       }
 
       setSyncConflict(null);
-      const nextProgress = hasTrackedProgress(serverProgress) ? serverProgress : localProgress;
-      const nextDailyGoal = hasServerGoal ? serverDailyGoal : localDailyGoal;
-      applyHydratedState(nextProgress, nextDailyGoal);
+      const nextProgress = localChangedDuringHydration
+        ? currentLocalProgress
+        : hasTrackedProgress(serverProgress)
+          ? serverProgress
+          : currentLocalProgress;
+      const nextDailyGoal = localChangedDuringHydration
+        ? currentLocalDailyGoal
+        : hasServerGoal
+          ? serverDailyGoal
+          : currentLocalDailyGoal;
+      applyHydratedState(nextProgress, nextDailyGoal, { keepPendingCloudWrite: localChangedDuringHydration });
     };
 
     void loadServerData();
@@ -615,3 +657,5 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
+
+
