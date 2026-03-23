@@ -1,7 +1,5 @@
--- Reference snapshot of the Supabase sync schema.
--- Canonical change history lives in supabase/migrations/.
--- For existing projects that already ran this schema, treat the initial
--- migration as the baseline and add future changes as new migration files.
+-- Baseline migration for the optional Supabase sync backend.
+-- This matches the already-applied schema for existing projects.
 
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,

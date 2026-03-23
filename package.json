@@ -17,7 +17,14 @@
     "test": "node scripts/run-vitest.mjs",
     "test:watch": "node scripts/run-vitest.mjs --watch",
     "test:e2e": "npm run build:e2e && playwright test",
-    "verify": "eslint . && tsc -b --pretty false && node scripts/run-vitest.mjs && tsc -b && vite build"
+    "verify": "eslint . && tsc -b --pretty false && node scripts/run-vitest.mjs && tsc -b && vite build",
+    "supabase:link": "supabase link",
+    "supabase:migration:list": "supabase migration list --linked",
+    "supabase:migration:baseline": "supabase migration repair 20260323120000 --status applied --linked",
+    "supabase:db:push": "supabase db push --linked",
+    "supabase:db:push:dry": "supabase db push --linked --dry-run",
+    "supabase:db:reset": "supabase db reset --local",
+    "supabase:db:lint": "supabase db lint --local"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
@@ -35,6 +42,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^16.5.0",
     "postcss": "^8.5.8",
+    "supabase": "^2.83.0",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.0",
