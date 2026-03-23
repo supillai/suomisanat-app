@@ -49,8 +49,11 @@ export const AppStateProvider = ({ words, children }: AppStateProviderProps) => 
   const cloudSync = useCloudSync({
     progressMap: progressStore.progressMap,
     progressMapRef: progressStore.progressMapRef,
+    dirtyWordIdsRef: progressStore.dirtyWordIdsRef,
     dailyGoal: progressStore.dailyGoal,
     dailyGoalRef: progressStore.dailyGoalRef,
+    dailyGoalUpdatedAtRef: progressStore.dailyGoalUpdatedAtRef,
+    settingsDirtyRef: progressStore.settingsDirtyRef,
     replaceSnapshot: progressStore.replaceSnapshot,
     localSyncSummary: progressStore.localSyncSummary
   });

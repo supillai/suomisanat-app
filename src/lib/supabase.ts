@@ -5,7 +5,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const isE2eMode = import.meta.env.MODE === "e2e";
 
-type AppSupabaseClient = Pick<SupabaseClient, "auth" | "from">;
+type AppSupabaseClient = Pick<SupabaseClient, "auth" | "from" | "rpc">;
 
 declare global {
   interface Window {

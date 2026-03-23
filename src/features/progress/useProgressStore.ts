@@ -20,17 +20,25 @@ export type MarkWordOptions = {
   needsPractice?: boolean;
 };
 
+export type ReplaceSnapshotOptions = {
+  preserveDirty?: boolean;
+  dailyGoalUpdatedAt?: string | null;
+};
+
 export type MarkWord = (word: VocabularyWord, isCorrect: boolean, options?: MarkWordOptions) => void;
 
 export type ProgressStore = {
   progressMap: ProgressMap;
   progressMapRef: MutableRefObject<ProgressMap>;
+  dirtyWordIdsRef: MutableRefObject<Set<number>>;
   dailyGoal: number;
   dailyGoalRef: MutableRefObject<number>;
+  dailyGoalUpdatedAtRef: MutableRefObject<string | null>;
+  settingsDirtyRef: MutableRefObject<boolean>;
   stats: ProgressStats;
   localSyncSummary: ProgressSummary;
   updateDailyGoal: (nextGoal: number) => void;
-  replaceSnapshot: (nextProgress: ProgressMap, nextDailyGoal: number) => void;
+  replaceSnapshot: (nextProgress: ProgressMap, nextDailyGoal: number, options?: ReplaceSnapshotOptions) => void;
   setWordStatus: (word: VocabularyWord, status: WordStatus) => void;
   markWord: MarkWord;
 };
@@ -40,7 +48,10 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
   const [dailyGoal, setDailyGoal] = useState<number>(() => safeReadDailyGoal());
 
   const progressMapRef = useRef<ProgressMap>(progressMap);
+  const dirtyWordIdsRef = useRef<Set<number>>(new Set());
   const dailyGoalRef = useRef<number>(dailyGoal);
+  const dailyGoalUpdatedAtRef = useRef<string | null>(null);
+  const settingsDirtyRef = useRef(false);
 
   useEffect(() => {
     persistProgress(progressMap);
@@ -58,9 +69,23 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
     dailyGoalRef.current = dailyGoal;
   }, [dailyGoal]);
 
-  const replaceSnapshot = useCallback((nextProgress: ProgressMap, nextDailyGoal: number): void => {
+  const replaceSnapshot = useCallback((
+    nextProgress: ProgressMap,
+    nextDailyGoal: number,
+    options?: ReplaceSnapshotOptions
+  ): void => {
     progressMapRef.current = nextProgress;
     dailyGoalRef.current = nextDailyGoal;
+
+    if (!options?.preserveDirty) {
+      dirtyWordIdsRef.current = new Set();
+      settingsDirtyRef.current = false;
+    }
+
+    if (typeof options?.dailyGoalUpdatedAt !== "undefined") {
+      dailyGoalUpdatedAtRef.current = options.dailyGoalUpdatedAt;
+    }
+
     setProgressMap(nextProgress);
     setDailyGoal(nextDailyGoal);
   }, []);
@@ -69,23 +94,29 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
     if (!Number.isFinite(nextGoal) || nextGoal <= 0) return;
 
     const normalizedGoal = Math.round(nextGoal);
+    if (normalizedGoal === dailyGoalRef.current) return;
+
     dailyGoalRef.current = normalizedGoal;
+    dailyGoalUpdatedAtRef.current = new Date().toISOString();
+    settingsDirtyRef.current = true;
     setDailyGoal(normalizedGoal);
   };
 
   const setWordStatus = (word: VocabularyWord, status: WordStatus): void => {
     setProgressMap((current) => {
+      const updatedAt = new Date().toISOString();
       const next = {
         ...current,
         [word.id]: {
           ...(current[word.id] ?? createEmptyProgressState()),
           known: status === "known",
           needsPractice: status === "practice",
-          updatedAt: new Date().toISOString()
+          updatedAt
         }
       };
 
       progressMapRef.current = next;
+      dirtyWordIdsRef.current = new Set(dirtyWordIdsRef.current).add(word.id);
       return next;
     });
   };
@@ -110,6 +141,7 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
       };
 
       progressMapRef.current = next;
+      dirtyWordIdsRef.current = new Set(dirtyWordIdsRef.current).add(word.id);
       return next;
     });
   };
@@ -120,8 +152,11 @@ export const useProgressStore = (wordList: VocabularyWord[]): ProgressStore => {
   return {
     progressMap,
     progressMapRef,
+    dirtyWordIdsRef,
     dailyGoal,
     dailyGoalRef,
+    dailyGoalUpdatedAtRef,
+    settingsDirtyRef,
     stats,
     localSyncSummary,
     updateDailyGoal,

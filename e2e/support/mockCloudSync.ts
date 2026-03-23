@@ -41,6 +41,12 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
   await page.addInitScript((initialScenario) => {
     const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
     const authListeners: Array<(event: string, session: unknown) => void> = [];
+    const compareTimestamps = (first: string | null | undefined, second: string | null | undefined): number => {
+      if (!first && !second) return 0;
+      if (!first) return -1;
+      if (!second) return 1;
+      return first.localeCompare(second);
+    };
     const normalizeProgressRow = (row: {
       word_id: number;
       seen: number;
@@ -65,6 +71,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
       session: clone(initialScenario.session),
       serverProgressRows: clone(initialScenario.serverProgressRows),
       serverDailyGoal: initialScenario.serverDailyGoal,
+      serverDailyGoalUpdatedAt: initialScenario.serverDailyGoal === null ? null : new Date().toISOString(),
       getSessionCalls: 0,
       pendingProgressUpserts: 0,
       upsertLog: [] as Array<{ table: string; payload: unknown }>,
@@ -83,6 +90,94 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
     window.localStorage.setItem("suomisanat-daily-goal-v1", String(initialScenario.localDailyGoal));
 
     const ok = <T,>(data: T) => Promise.resolve({ data: clone(data), error: null });
+
+    const applyProgressRows = async (
+      rows: Array<{
+        word_id: number;
+        seen: number;
+        correct: number;
+        wrong: number;
+        known: boolean;
+        needs_practice: boolean;
+        last_reviewed: string | null;
+        updated_at: string;
+      }>,
+      mode: "delta" | "overwrite"
+    ): Promise<{ acceptedCount: number; staleCount: number }> => {
+      state.pendingProgressUpserts += 1;
+
+      try {
+        if (typeof initialScenario.progressUpsertDelayMs === "number" && initialScenario.progressUpsertDelayMs > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, initialScenario.progressUpsertDelayMs));
+        }
+
+        const nextRows = new Map(state.serverProgressRows.map((row) => [row.word_id, row]));
+        let acceptedCount = 0;
+        let staleCount = 0;
+
+        for (const row of rows) {
+          const currentRow = nextRows.get(row.word_id);
+          const shouldApply =
+            mode === "overwrite" ||
+            !currentRow ||
+            compareTimestamps(row.updated_at, currentRow.updated_at) >= 0;
+
+          if (!shouldApply) {
+            staleCount += 1;
+            continue;
+          }
+
+          nextRows.set(row.word_id, normalizeProgressRow(row));
+          acceptedCount += 1;
+        }
+
+        state.serverProgressRows = [...nextRows.values()];
+        state.upsertLog.push({ table: "user_progress", payload: clone(rows) });
+
+        return { acceptedCount, staleCount };
+      } finally {
+        state.pendingProgressUpserts -= 1;
+      }
+    };
+
+    const applySettingsRow = (
+      row: { daily_goal: number; updated_at: string } | null,
+      mode: "delta" | "overwrite"
+    ): { applied: boolean; stale: boolean } => {
+      if (!row) {
+        return { applied: false, stale: false };
+      }
+
+      const shouldApply =
+        mode === "overwrite" ||
+        !state.serverDailyGoalUpdatedAt ||
+        compareTimestamps(row.updated_at, state.serverDailyGoalUpdatedAt) >= 0;
+
+      if (!shouldApply) {
+        return { applied: false, stale: true };
+      }
+
+      state.serverDailyGoal = row.daily_goal;
+      state.serverDailyGoalUpdatedAt = row.updated_at;
+      state.upsertLog.push({ table: "user_settings", payload: clone(row) });
+      return { applied: true, stale: false };
+    };
+
+    const buildSyncResponse = (
+      progressAcceptedCount: number,
+      progressStaleCount: number,
+      settingsApplied: boolean,
+      settingsStale: boolean,
+      deletedCount: number
+    ) =>
+      ok({
+        progress_accepted_count: progressAcceptedCount,
+        progress_stale_count: progressStaleCount,
+        settings_applied: settingsApplied,
+        settings_stale: settingsStale,
+        deleted_count: deletedCount,
+        synced_at: new Date().toISOString()
+      });
 
     const supabase = {
       auth: {
@@ -113,6 +208,57 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
           return { error: null };
         }
       },
+      rpc: async (
+        fn: "pull_user_sync_state" | "push_user_sync_batch" | "overwrite_user_sync_snapshot",
+        args?: {
+          progress_rows?: Array<{
+            word_id: number;
+            seen: number;
+            correct: number;
+            wrong: number;
+            known: boolean;
+            needs_practice: boolean;
+            last_reviewed: string | null;
+            updated_at: string;
+          }>;
+          settings_row?: { daily_goal: number; updated_at: string } | null;
+          deleted_word_ids?: number[];
+        }
+      ) => {
+        if (fn === "pull_user_sync_state") {
+          return ok({
+            settings:
+              state.serverDailyGoal === null
+                ? null
+                : {
+                    daily_goal: state.serverDailyGoal,
+                    updated_at: state.serverDailyGoalUpdatedAt
+                  },
+            progress: state.serverProgressRows
+          });
+        }
+
+        const progressRows = args?.progress_rows ?? [];
+        const settingsRow = args?.settings_row ?? null;
+        const deletedWordIds = args?.deleted_word_ids ?? [];
+        const deletedCount = deletedWordIds.length;
+
+        if (deletedWordIds.length > 0) {
+          state.serverProgressRows = state.serverProgressRows.filter((row) => !deletedWordIds.includes(row.word_id));
+        }
+
+        const mode = fn === "overwrite_user_sync_snapshot" ? "overwrite" : "delta";
+        const progressResult = await applyProgressRows(progressRows, mode);
+        const settingsResult = applySettingsRow(settingsRow ?? null, mode);
+
+        return buildSyncResponse(
+          progressResult.acceptedCount,
+          progressResult.staleCount,
+          settingsResult.applied,
+          settingsResult.stale,
+          deletedCount
+        );
+      },
       from: (table: "user_progress" | "user_settings") => {
         if (table === "user_progress") {
           return {
@@ -137,21 +283,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
               last_reviewed: string | null;
               updated_at: string;
             }>) => {
-              state.pendingProgressUpserts += 1;
-
-              if (typeof initialScenario.progressUpsertDelayMs === "number" && initialScenario.progressUpsertDelayMs > 0) {
-                await new Promise((resolve) => window.setTimeout(resolve, initialScenario.progressUpsertDelayMs));
-              }
-
-              const nextRows = new Map(state.serverProgressRows.map((row) => [row.word_id, row]));
-
-              for (const row of rows) {
-                nextRows.set(row.word_id, normalizeProgressRow(row));
-              }
-
-              state.serverProgressRows = [...nextRows.values()];
-              state.upsertLog.push({ table, payload: clone(rows) });
-              state.pendingProgressUpserts -= 1;
+              await applyProgressRows(rows, "overwrite");
               return { error: null };
             }
           };
@@ -160,12 +292,19 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: () => ok(state.serverDailyGoal === null ? null : { daily_goal: state.serverDailyGoal })
+              maybeSingle: () =>
+                ok(
+                  state.serverDailyGoal === null
+                    ? null
+                    : {
+                        daily_goal: state.serverDailyGoal,
+                        updated_at: state.serverDailyGoalUpdatedAt
+                      }
+                )
             })
           }),
           upsert: async (row: { daily_goal: number }) => {
-            state.serverDailyGoal = row.daily_goal;
-            state.upsertLog.push({ table, payload: clone(row) });
+            applySettingsRow({ daily_goal: row.daily_goal, updated_at: new Date().toISOString() }, "overwrite");
             return { error: null };
           }
         };
@@ -176,4 +315,3 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
     (window as Window & { __SUOMISANAT_E2E_SYNC_STATE__?: unknown }).__SUOMISANAT_E2E_SYNC_STATE__ = state;
   }, scenario);
 };
-

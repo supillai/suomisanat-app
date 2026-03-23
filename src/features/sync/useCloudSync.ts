@@ -4,24 +4,43 @@ import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from "../../lib/supabase";
 import type { ProgressMap } from "../../types";
 import { DEFAULT_DAILY_GOAL, SYNC_DEBOUNCE_MS } from "../app/app.constants";
-import { hasTrackedProgress, summarizeProgress } from "../progress/progress.utils";
+import { hasTrackedProgress, safeTimestamp, summarizeProgress } from "../progress/progress.utils";
 import type { ProgressSummary } from "../progress/progress.utils";
 import {
+  buildPushSyncBatchArgs,
   createBackgroundSyncRequests,
   formatSyncTimestamp,
+  normalizePullUserSyncStateResponse,
+  normalizePushUserSyncBatchResponse,
   progressMapsEqual,
   toProgressMapFromRows,
   toProgressUpserts,
+  toProgressUpsertsForWordIds,
   toSettingsUpsert
 } from "./sync.utils";
-import type { SyncConflict, SyncResolutionChoice, SyncStatus, UserProgressRow, UserSettingsRow } from "./sync.types";
+import type {
+  PushUserSyncBatchResponse,
+  SyncConflict,
+  SyncResolutionChoice,
+  SyncStatus,
+  UserProgressUpsert
+} from "./sync.types";
+
+type ReplaceSnapshot = (
+  nextProgress: ProgressMap,
+  nextDailyGoal: number,
+  options?: { preserveDirty?: boolean; dailyGoalUpdatedAt?: string | null }
+) => void;
 
 type UseCloudSyncOptions = {
   progressMap: ProgressMap;
   progressMapRef: MutableRefObject<ProgressMap>;
+  dirtyWordIdsRef: MutableRefObject<Set<number>>;
   dailyGoal: number;
   dailyGoalRef: MutableRefObject<number>;
-  replaceSnapshot: (nextProgress: ProgressMap, nextDailyGoal: number) => void;
+  dailyGoalUpdatedAtRef: MutableRefObject<string | null>;
+  settingsDirtyRef: MutableRefObject<boolean>;
+  replaceSnapshot: ReplaceSnapshot;
   localSyncSummary: ProgressSummary;
 };
 
@@ -52,11 +71,27 @@ export type CloudSyncState = {
   cloudSyncSummary: ProgressSummary | null;
 };
 
+type ServerSnapshot = {
+  progress: ProgressMap;
+  dailyGoal: number;
+  dailyGoalUpdatedAt: string | null;
+  hasServerGoal: boolean;
+  hasServerData: boolean;
+};
+
+const hasPendingDirtyState = (
+  dirtyWordIdsRef: MutableRefObject<Set<number>>,
+  settingsDirtyRef: MutableRefObject<boolean>
+): boolean => dirtyWordIdsRef.current.size > 0 || settingsDirtyRef.current;
+
 export const useCloudSync = ({
   progressMap,
   progressMapRef,
+  dirtyWordIdsRef,
   dailyGoal,
   dailyGoalRef,
+  dailyGoalUpdatedAtRef,
+  settingsDirtyRef,
   replaceSnapshot,
   localSyncSummary
 }: UseCloudSyncOptions): CloudSyncState => {
@@ -82,8 +117,6 @@ export const useCloudSync = ({
   const syncConflictRef = useRef<SyncConflict | null>(syncConflict);
   const pendingFlushAfterSaveRef = useRef(false);
   const hasPendingCloudWriteRef = useRef(false);
-  const hydrationBaselineProgressRef = useRef<ProgressMap>({});
-  const hydrationBaselineDailyGoalRef = useRef(DEFAULT_DAILY_GOAL);
   const pendingFlushAfterHydrationRef = useRef(false);
 
   useEffect(() => {
@@ -119,19 +152,150 @@ export const useCloudSync = ({
   const applyHydratedState = useCallback((
     nextProgress: ProgressMap,
     nextDailyGoal: number,
-    options?: { keepPendingCloudWrite?: boolean }
+    options?: { keepPendingCloudWrite?: boolean; serverDailyGoalUpdatedAt?: string | null }
   ): void => {
     const keepPendingCloudWrite = Boolean(options?.keepPendingCloudWrite);
 
     skipNextProgressSyncRef.current = true;
     skipNextSettingsSyncRef.current = true;
-    replaceSnapshot(nextProgress, nextDailyGoal);
-    hasPendingCloudWriteRef.current = keepPendingCloudWrite;
-    pendingFlushAfterHydrationRef.current = keepPendingCloudWrite;
+    replaceSnapshot(nextProgress, nextDailyGoal, {
+      preserveDirty: keepPendingCloudWrite,
+      dailyGoalUpdatedAt: keepPendingCloudWrite ? dailyGoalUpdatedAtRef.current : options?.serverDailyGoalUpdatedAt ?? null
+    });
+    hasPendingCloudWriteRef.current = keepPendingCloudWrite && hasPendingDirtyState(dirtyWordIdsRef, settingsDirtyRef);
+    pendingFlushAfterHydrationRef.current = hasPendingCloudWriteRef.current;
     setHasHydratedServer(true);
     setLastSyncedAt((current) => (keepPendingCloudWrite ? current : new Date().toISOString()));
     setSyncStatus(keepPendingCloudWrite ? "idle" : "synced");
-  }, [replaceSnapshot]);
+  }, [dailyGoalUpdatedAtRef, dirtyWordIdsRef, replaceSnapshot, settingsDirtyRef]);
+
+  const buildPendingSyncBatch = useCallback((userId: string): {
+    progressRows: UserProgressUpsert[];
+    settingsRow: ReturnType<typeof toSettingsUpsert> | null;
+  } => {
+    const progressRows = toProgressUpsertsForWordIds(userId, progressMapRef.current, dirtyWordIdsRef.current);
+    const settingsRow = settingsDirtyRef.current
+      ? toSettingsUpsert(userId, dailyGoalRef.current, dailyGoalUpdatedAtRef.current)
+      : null;
+
+    return {
+      progressRows,
+      settingsRow
+    };
+  }, [dailyGoalRef, dailyGoalUpdatedAtRef, dirtyWordIdsRef, progressMapRef, settingsDirtyRef]);
+
+  const clearFlushedProgressRows = useCallback((progressRows: UserProgressUpsert[]): void => {
+    if (progressRows.length === 0) return;
+
+    const nextDirtyWordIds = new Set(dirtyWordIdsRef.current);
+
+    for (const row of progressRows) {
+      const currentUpdatedAt = safeTimestamp(progressMapRef.current[row.word_id]?.updatedAt);
+      if (currentUpdatedAt === row.updated_at) {
+        nextDirtyWordIds.delete(row.word_id);
+      }
+    }
+
+    dirtyWordIdsRef.current = nextDirtyWordIds;
+  }, [dirtyWordIdsRef, progressMapRef]);
+
+  const clearFlushedSettingsRow = useCallback((settingsRow: ReturnType<typeof toSettingsUpsert> | null): void => {
+    if (!settingsRow || !settingsDirtyRef.current) return;
+
+    if (
+      dailyGoalRef.current === settingsRow.daily_goal &&
+      safeTimestamp(dailyGoalUpdatedAtRef.current) === settingsRow.updated_at
+    ) {
+      settingsDirtyRef.current = false;
+      dailyGoalUpdatedAtRef.current = settingsRow.updated_at;
+    }
+  }, [dailyGoalRef, dailyGoalUpdatedAtRef, settingsDirtyRef]);
+
+  const loadServerData = useCallback(async (userId: string): Promise<void> => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    setSyncStatus("loading");
+    setSyncError(null);
+
+    const baselineProgress = progressMapRef.current;
+    const baselineDailyGoal = dailyGoalRef.current;
+    pendingFlushAfterHydrationRef.current = false;
+
+    const { data, error } = await client.rpc("pull_user_sync_state");
+    if (sessionRef.current?.user.id !== userId) return;
+
+    if (error) {
+      setSyncStatus("error");
+      setSyncError(error.message);
+      setHasHydratedServer(false);
+      return;
+    }
+
+    const response = normalizePullUserSyncStateResponse(data);
+    const serverSnapshot: ServerSnapshot = {
+      progress: toProgressMapFromRows(response.progress),
+      dailyGoal:
+        Number.isFinite(response.settings?.daily_goal) && Number(response.settings?.daily_goal) > 0
+          ? Math.round(Number(response.settings?.daily_goal))
+          : DEFAULT_DAILY_GOAL,
+      dailyGoalUpdatedAt: safeTimestamp(response.settings?.updated_at),
+      hasServerGoal: Number.isFinite(response.settings?.daily_goal) && Number(response.settings?.daily_goal) > 0,
+      hasServerData: false
+    };
+    serverSnapshot.hasServerData = hasTrackedProgress(serverSnapshot.progress) || serverSnapshot.hasServerGoal;
+
+    const currentLocalProgress = progressMapRef.current;
+    const currentLocalDailyGoal = dailyGoalRef.current;
+    const hasBaselineLocalData = hasTrackedProgress(baselineProgress) || baselineDailyGoal !== DEFAULT_DAILY_GOAL;
+    const baselineProgressDiffers = !progressMapsEqual(baselineProgress, serverSnapshot.progress);
+    const baselineGoalDiffers = baselineDailyGoal !== serverSnapshot.dailyGoal;
+    const localChangedDuringHydration =
+      !progressMapsEqual(currentLocalProgress, baselineProgress) || currentLocalDailyGoal !== baselineDailyGoal;
+
+    if (hasBaselineLocalData && serverSnapshot.hasServerData && (baselineProgressDiffers || baselineGoalDiffers)) {
+      hasPendingCloudWriteRef.current = false;
+      pendingFlushAfterHydrationRef.current = false;
+      setSyncConflict({
+        mode: "different-data",
+        serverProgress: serverSnapshot.progress,
+        serverDailyGoal: serverSnapshot.dailyGoal
+      });
+      setHasHydratedServer(false);
+      setSyncStatus("idle");
+      return;
+    }
+
+    if (hasBaselineLocalData && !serverSnapshot.hasServerData) {
+      hasPendingCloudWriteRef.current = false;
+      pendingFlushAfterHydrationRef.current = false;
+      setSyncConflict({
+        mode: "cloud-empty",
+        serverProgress: serverSnapshot.progress,
+        serverDailyGoal: serverSnapshot.dailyGoal
+      });
+      setHasHydratedServer(false);
+      setSyncStatus("idle");
+      return;
+    }
+
+    setSyncConflict(null);
+    const nextProgress = localChangedDuringHydration
+      ? currentLocalProgress
+      : hasTrackedProgress(serverSnapshot.progress)
+        ? serverSnapshot.progress
+        : currentLocalProgress;
+    const nextDailyGoal = localChangedDuringHydration
+      ? currentLocalDailyGoal
+      : serverSnapshot.hasServerGoal
+        ? serverSnapshot.dailyGoal
+        : currentLocalDailyGoal;
+
+    applyHydratedState(nextProgress, nextDailyGoal, {
+      keepPendingCloudWrite: localChangedDuringHydration,
+      serverDailyGoalUpdatedAt: serverSnapshot.dailyGoalUpdatedAt
+    });
+  }, [applyHydratedState, dailyGoalRef, progressMapRef]);
 
   useEffect(() => {
     if (!syncConflict) return;
@@ -163,46 +327,53 @@ export const useCloudSync = ({
       settingsSaveTimerRef.current = null;
     }
 
-    const progressRows = toProgressUpserts(userId, progressMapRef.current);
-    const settingsRow = toSettingsUpsert(userId, dailyGoalRef.current);
+    const { progressRows, settingsRow } = buildPendingSyncBatch(userId);
+
+    if (progressRows.length === 0 && !settingsRow) {
+      hasPendingCloudWriteRef.current = false;
+      setSyncError(null);
+      setSyncStatus("synced");
+      flushSyncInFlightRef.current = false;
+      return;
+    }
 
     setSyncStatus("saving");
 
     let saveSucceeded = false;
 
     try {
-      const [progressResponse, settingsResponse] = await Promise.all([
-        progressRows.length > 0
-          ? client.from("user_progress").upsert(progressRows, { onConflict: "user_id,word_id" })
-          : Promise.resolve({ error: null }),
-        client.from("user_settings").upsert(settingsRow, { onConflict: "user_id" })
-      ]);
+      const { data, error } = await client.rpc("push_user_sync_batch", buildPushSyncBatchArgs(progressRows, settingsRow));
 
-      if (progressResponse.error) {
+      if (error) {
         setSyncStatus("error");
-        setSyncError(progressResponse.error.message);
+        setSyncError(error.message);
         return;
       }
 
-      if (settingsResponse.error) {
-        setSyncStatus("error");
-        setSyncError(settingsResponse.error.message);
+      const response: PushUserSyncBatchResponse = normalizePushUserSyncBatchResponse(data);
+      const hasStaleWrites = (response.progress_stale_count ?? 0) > 0 || Boolean(response.settings_stale);
+
+      if (hasStaleWrites) {
+        setSyncError("Cloud data changed on another device. Review the latest snapshot.");
+        await loadServerData(userId);
         return;
       }
 
+      clearFlushedProgressRows(progressRows);
+      clearFlushedSettingsRow(settingsRow);
+      hasPendingCloudWriteRef.current = hasPendingDirtyState(dirtyWordIdsRef, settingsDirtyRef);
       setSyncError(null);
-      hasPendingCloudWriteRef.current = pendingFlushAfterSaveRef.current;
-      setLastSyncedAt(new Date().toISOString());
+      setLastSyncedAt(response.synced_at ?? new Date().toISOString());
       saveSucceeded = true;
-      setSyncStatus(pendingFlushAfterSaveRef.current ? "saving" : "synced");
+      setSyncStatus(hasPendingCloudWriteRef.current || pendingFlushAfterSaveRef.current ? "saving" : "synced");
     } finally {
       flushSyncInFlightRef.current = false;
 
-      if (saveSucceeded && pendingFlushAfterSaveRef.current && !syncConflictRef.current) {
+      if (saveSucceeded && (pendingFlushAfterSaveRef.current || hasPendingDirtyState(dirtyWordIdsRef, settingsDirtyRef)) && !syncConflictRef.current) {
         void flushSyncNow();
       }
     }
-  }, [dailyGoalRef, progressMapRef]);
+  }, [buildPendingSyncBatch, clearFlushedProgressRows, clearFlushedSettingsRow, dirtyWordIdsRef, loadServerData, settingsDirtyRef]);
 
   const flushSyncInBackground = useCallback((): void => {
     const supabaseConfig = getSupabaseConfig();
@@ -227,19 +398,19 @@ export const useCloudSync = ({
       return;
     }
 
+    const { progressRows, settingsRow } = buildPendingSyncBatch(userId);
     const requests = createBackgroundSyncRequests({
       supabaseUrl: supabaseConfig.url,
       publishableKey: supabaseConfig.publishableKey,
       accessToken,
-      userId,
-      map: progressMapRef.current,
-      goal: dailyGoalRef.current
+      progressRows,
+      settingsRow
     });
 
     for (const request of requests) {
       void fetch(request.url, request.init).catch(() => undefined);
     }
-  }, [dailyGoalRef, progressMapRef]);
+  }, [buildPendingSyncBatch]);
 
   const scheduleSyncFlush = useCallback((kind: "progress" | "settings"): void => {
     if (flushSyncInFlightRef.current) {
@@ -282,38 +453,29 @@ export const useCloudSync = ({
         .filter((value) => Number.isFinite(value));
       const wordIdsToDelete = serverWordIds.filter((wordId) => !localWordIds.has(wordId));
       const progressRows = toProgressUpserts(userId, nextProgress);
+      const settingsRow = toSettingsUpsert(userId, nextDailyGoal, dailyGoalUpdatedAtRef.current);
 
-      if (wordIdsToDelete.length > 0) {
-        const deleteResponse = await client.from("user_progress").delete().eq("user_id", userId).in("word_id", wordIdsToDelete);
-        if (deleteResponse.error) {
-          setSyncStatus("error");
-          setSyncError(deleteResponse.error.message);
-          return;
-        }
-      }
+      const { data, error } = await client.rpc(
+        "overwrite_user_sync_snapshot",
+        buildPushSyncBatchArgs(progressRows, settingsRow, wordIdsToDelete)
+      );
 
-      const [progressResponse, settingsResponse] = await Promise.all([
-        progressRows.length > 0
-          ? client.from("user_progress").upsert(progressRows, { onConflict: "user_id,word_id" })
-          : Promise.resolve({ error: null }),
-        client.from("user_settings").upsert(toSettingsUpsert(userId, nextDailyGoal), { onConflict: "user_id" })
-      ]);
-
-      if (progressResponse.error) {
+      if (error) {
         setSyncStatus("error");
-        setSyncError(progressResponse.error.message);
+        setSyncError(error.message);
         return;
       }
 
-      if (settingsResponse.error) {
-        setSyncStatus("error");
-        setSyncError(settingsResponse.error.message);
-        return;
-      }
+      const response = normalizePushUserSyncBatchResponse(data);
+      setLastSyncedAt(response.synced_at ?? new Date().toISOString());
+      dailyGoalUpdatedAtRef.current = settingsRow.updated_at;
+      hasPendingCloudWriteRef.current = false;
     }
 
     setSyncConflict(null);
-    applyHydratedState(nextProgress, nextDailyGoal);
+    applyHydratedState(nextProgress, nextDailyGoal, {
+      serverDailyGoalUpdatedAt: overwriteCloud ? dailyGoalUpdatedAtRef.current : null
+    });
   };
 
   useEffect(() => {
@@ -355,8 +517,6 @@ export const useCloudSync = ({
 
       hasPendingCloudWriteRef.current = false;
       pendingFlushAfterHydrationRef.current = false;
-      hydrationBaselineProgressRef.current = progressMapRef.current;
-      hydrationBaselineDailyGoalRef.current = dailyGoalRef.current;
       setSyncError(null);
       setSyncConflict(null);
       setSyncStatus(nextSession ? "loading" : "idle");
@@ -367,119 +527,21 @@ export const useCloudSync = ({
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [dailyGoalRef, progressMapRef, supabaseConfigured]);
+  }, [supabaseConfigured]);
 
   useEffect(() => {
-    const client = getSupabaseClient();
-    if (!client) return;
-
     const userId = session?.user.id;
     if (!userId) {
       hasPendingCloudWriteRef.current = false;
       pendingFlushAfterHydrationRef.current = false;
-      hydrationBaselineProgressRef.current = {};
-      hydrationBaselineDailyGoalRef.current = DEFAULT_DAILY_GOAL;
       setHasHydratedServer(false);
       setSyncConflict(null);
       setSyncStatus("idle");
       return;
     }
 
-    let cancelled = false;
-
-    const loadServerData = async (): Promise<void> => {
-      setSyncStatus("loading");
-      setSyncError(null);
-
-      const baselineProgress = progressMapRef.current;
-      const baselineDailyGoal = dailyGoalRef.current;
-      hydrationBaselineProgressRef.current = baselineProgress;
-      hydrationBaselineDailyGoalRef.current = baselineDailyGoal;
-      pendingFlushAfterHydrationRef.current = false;
-
-      const [progressResponse, settingsResponse] = await Promise.all([
-        client
-          .from("user_progress")
-          .select("word_id, seen, correct, wrong, known, needs_practice, last_reviewed, updated_at")
-          .eq("user_id", userId),
-        client.from("user_settings").select("daily_goal").eq("user_id", userId).maybeSingle<UserSettingsRow>()
-      ]);
-
-      if (cancelled) return;
-
-      if (progressResponse.error) {
-        setSyncStatus("error");
-        setSyncError(progressResponse.error.message);
-        setHasHydratedServer(false);
-        return;
-      }
-
-      if (settingsResponse.error) {
-        setSyncStatus("error");
-        setSyncError(settingsResponse.error.message);
-        setHasHydratedServer(false);
-        return;
-      }
-
-      const serverRows = (progressResponse.data ?? []) as UserProgressRow[];
-      const serverProgress = toProgressMapFromRows(serverRows);
-      const currentLocalProgress = progressMapRef.current;
-      const currentLocalDailyGoal = dailyGoalRef.current;
-      const hasServerGoal = Number.isFinite(settingsResponse.data?.daily_goal) && Number(settingsResponse.data?.daily_goal) > 0;
-      const serverDailyGoal = hasServerGoal ? Math.round(Number(settingsResponse.data?.daily_goal)) : DEFAULT_DAILY_GOAL;
-      const hasServerData = hasTrackedProgress(serverProgress) || hasServerGoal;
-      const hasBaselineLocalData = hasTrackedProgress(baselineProgress) || baselineDailyGoal !== DEFAULT_DAILY_GOAL;
-      const baselineProgressDiffers = !progressMapsEqual(baselineProgress, serverProgress);
-      const baselineGoalDiffers = baselineDailyGoal !== serverDailyGoal;
-      const localChangedDuringHydration =
-        !progressMapsEqual(currentLocalProgress, baselineProgress) || currentLocalDailyGoal !== baselineDailyGoal;
-
-      if (hasBaselineLocalData && hasServerData && (baselineProgressDiffers || baselineGoalDiffers)) {
-        hasPendingCloudWriteRef.current = false;
-        pendingFlushAfterHydrationRef.current = false;
-        setSyncConflict({
-          mode: "different-data",
-          serverProgress,
-          serverDailyGoal
-        });
-        setHasHydratedServer(false);
-        setSyncStatus("idle");
-        return;
-      }
-
-      if (hasBaselineLocalData && !hasServerData) {
-        hasPendingCloudWriteRef.current = false;
-        pendingFlushAfterHydrationRef.current = false;
-        setSyncConflict({
-          mode: "cloud-empty",
-          serverProgress,
-          serverDailyGoal
-        });
-        setHasHydratedServer(false);
-        setSyncStatus("idle");
-        return;
-      }
-
-      setSyncConflict(null);
-      const nextProgress = localChangedDuringHydration
-        ? currentLocalProgress
-        : hasTrackedProgress(serverProgress)
-          ? serverProgress
-          : currentLocalProgress;
-      const nextDailyGoal = localChangedDuringHydration
-        ? currentLocalDailyGoal
-        : hasServerGoal
-          ? serverDailyGoal
-          : currentLocalDailyGoal;
-      applyHydratedState(nextProgress, nextDailyGoal, { keepPendingCloudWrite: localChangedDuringHydration });
-    };
-
-    void loadServerData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyHydratedState, dailyGoalRef, progressMapRef, session?.user.id]);
+    void loadServerData(userId);
+  }, [loadServerData, session?.user.id]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -589,7 +651,6 @@ export const useCloudSync = ({
     [syncConflict]
   );
 
-
   const syncBadgeLabel = !supabaseConfigured
     ? "Local only"
     : syncConflict
@@ -666,5 +727,3 @@ export const useCloudSync = ({
     cloudSyncSummary
   };
 };
-
-

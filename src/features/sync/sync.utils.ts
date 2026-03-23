@@ -1,12 +1,24 @@
 import type { ProgressMap, ProgressState } from "../../types";
 import { safeInt, safeTimestamp } from "../progress/progress.utils";
-import type { UserProgressRow, UserProgressUpsert, UserSettingsUpsert } from "./sync.types";
+import type {
+  PullUserSyncStateResponse,
+  PushUserSyncBatchResponse,
+  UserProgressRow,
+  UserProgressUpsert,
+  UserSettingsUpsert
+} from "./sync.types";
 
 const BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE = 100;
 
 export type BackgroundSyncRequest = {
   url: string;
   init: RequestInit;
+};
+
+export type PushSyncBatchArgs = {
+  progress_rows: UserProgressUpsert[];
+  settings_row: UserSettingsUpsert | null;
+  deleted_word_ids: number[];
 };
 
 const laterIsoDate = (first: string | null, second: string | null): string | null => {
@@ -126,13 +138,25 @@ export const toProgressMapFromRows = (rows: UserProgressRow[] | null | undefined
   return map;
 };
 
+const toSortedWordIds = (wordIds: Iterable<number>): number[] => {
+  return [...wordIds].filter((wordId) => Number.isFinite(wordId)).sort((first, second) => first - second);
+};
+
 export const toProgressUpserts = (userId: string, map: ProgressMap): UserProgressUpsert[] => {
+  return toProgressUpsertsForWordIds(userId, map, Object.keys(map).map((value) => Number(value)));
+};
+
+export const toProgressUpsertsForWordIds = (
+  userId: string,
+  map: ProgressMap,
+  wordIds: Iterable<number>
+): UserProgressUpsert[] => {
   const fallbackUpdatedAt = new Date().toISOString();
   const rows: UserProgressUpsert[] = [];
 
-  for (const [rawWordId, state] of Object.entries(map)) {
-    const wordId = Number(rawWordId);
-    if (!Number.isFinite(wordId)) continue;
+  for (const wordId of toSortedWordIds(wordIds)) {
+    const state = map[wordId];
+    if (!state) continue;
 
     rows.push({
       user_id: userId,
@@ -150,54 +174,116 @@ export const toProgressUpserts = (userId: string, map: ProgressMap): UserProgres
   return rows;
 };
 
-export const toSettingsUpsert = (userId: string, goal: number): UserSettingsUpsert => ({
+export const toSettingsUpsert = (userId: string, goal: number, updatedAt?: string | null): UserSettingsUpsert => ({
   user_id: userId,
   daily_goal: Math.max(1, Math.round(goal)),
-  updated_at: new Date().toISOString()
+  updated_at: safeTimestamp(updatedAt) ?? new Date().toISOString()
 });
+
+export const buildPushSyncBatchArgs = (
+  progressRows: UserProgressUpsert[],
+  settingsRow: UserSettingsUpsert | null,
+  deletedWordIds: number[] = []
+): PushSyncBatchArgs => ({
+  progress_rows: progressRows,
+  settings_row: settingsRow,
+  deleted_word_ids: toSortedWordIds(deletedWordIds)
+});
+
+export const normalizePullUserSyncStateResponse = (value: unknown): PullUserSyncStateResponse => {
+  if (!value || typeof value !== "object") {
+    return { settings: null, progress: [] };
+  }
+
+  const payload = value as Partial<PullUserSyncStateResponse>;
+  const progress = Array.isArray(payload.progress) ? (payload.progress as UserProgressRow[]) : [];
+  const settings = payload.settings && typeof payload.settings === "object"
+    ? (payload.settings as PullUserSyncStateResponse["settings"])
+    : null;
+
+  return {
+    settings,
+    progress
+  };
+};
+
+export const normalizePushUserSyncBatchResponse = (value: unknown): PushUserSyncBatchResponse => {
+  if (!value || typeof value !== "object") {
+    return {
+      progress_accepted_count: 0,
+      progress_stale_count: 0,
+      settings_applied: false,
+      settings_stale: false,
+      deleted_count: 0,
+      synced_at: null
+    };
+  }
+
+  const payload = value as Partial<PushUserSyncBatchResponse>;
+
+  return {
+    progress_accepted_count: typeof payload.progress_accepted_count === "number" ? payload.progress_accepted_count : 0,
+    progress_stale_count: typeof payload.progress_stale_count === "number" ? payload.progress_stale_count : 0,
+    settings_applied: typeof payload.settings_applied === "boolean" ? payload.settings_applied : false,
+    settings_stale: typeof payload.settings_stale === "boolean" ? payload.settings_stale : false,
+    deleted_count: typeof payload.deleted_count === "number" ? payload.deleted_count : 0,
+    synced_at: safeTimestamp(payload.synced_at)
+  };
+};
 
 export const createBackgroundSyncRequests = ({
   supabaseUrl,
   publishableKey,
   accessToken,
-  userId,
-  map,
-  goal
+  progressRows,
+  settingsRow,
+  deletedWordIds = []
 }: {
   supabaseUrl: string;
   publishableKey: string;
   accessToken: string;
-  userId: string;
-  map: ProgressMap;
-  goal: number;
+  progressRows: UserProgressUpsert[];
+  settingsRow: UserSettingsUpsert | null;
+  deletedWordIds?: number[];
 }): BackgroundSyncRequest[] => {
+  if (progressRows.length === 0 && !settingsRow && deletedWordIds.length === 0) {
+    return [];
+  }
+
   const headers = {
     "Content-Type": "application/json",
     apikey: publishableKey,
-    Authorization: `Bearer ${accessToken}`,
-    Prefer: "resolution=merge-duplicates,return=minimal"
+    Authorization: `Bearer ${accessToken}`
   };
-  const settingsRows = [toSettingsUpsert(userId, goal)];
-  const requests: BackgroundSyncRequest[] = [
-    {
-      url: `${supabaseUrl}/rest/v1/user_settings?on_conflict=user_id`,
+  const requests: BackgroundSyncRequest[] = [];
+
+  if (progressRows.length === 0) {
+    requests.push({
+      url: `${supabaseUrl}/rest/v1/rpc/push_user_sync_batch`,
       init: {
         method: "POST",
         headers,
-        body: JSON.stringify(settingsRows),
+        body: JSON.stringify(buildPushSyncBatchArgs([], settingsRow, deletedWordIds)),
         keepalive: true
       }
-    }
-  ];
-  const progressRows = toProgressUpserts(userId, map);
+    });
+
+    return requests;
+  }
 
   for (let start = 0; start < progressRows.length; start += BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE) {
     requests.push({
-      url: `${supabaseUrl}/rest/v1/user_progress?on_conflict=user_id,word_id`,
+      url: `${supabaseUrl}/rest/v1/rpc/push_user_sync_batch`,
       init: {
         method: "POST",
         headers,
-        body: JSON.stringify(progressRows.slice(start, start + BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE)),
+        body: JSON.stringify(
+          buildPushSyncBatchArgs(
+            progressRows.slice(start, start + BACKGROUND_SYNC_PROGRESS_CHUNK_SIZE),
+            start === 0 ? settingsRow : null,
+            start === 0 ? deletedWordIds : []
+          )
+        ),
         keepalive: true
       }
     });
@@ -219,5 +305,3 @@ export const formatSyncTimestamp = (value: string | null): string => {
     minute: "2-digit"
   }).format(parsed);
 };
-
-

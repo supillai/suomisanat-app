@@ -1,4 +1,4 @@
-﻿import type { ProgressMap } from "../../types";
+import type { ProgressMap } from "../../types";
 
 export type SyncStatus = "idle" | "loading" | "saving" | "synced" | "error";
 export type SyncConflictMode = "cloud-empty" | "different-data";
@@ -35,10 +35,25 @@ export type UserProgressUpsert = {
 
 export type UserSettingsRow = {
   daily_goal: number | null;
+  updated_at: string | null;
 };
 
 export type UserSettingsUpsert = {
   user_id: string;
   daily_goal: number;
   updated_at: string;
+};
+
+export type PullUserSyncStateResponse = {
+  settings: UserSettingsRow | null;
+  progress: UserProgressRow[];
+};
+
+export type PushUserSyncBatchResponse = {
+  progress_accepted_count: number | null;
+  progress_stale_count: number | null;
+  settings_applied: boolean | null;
+  settings_stale: boolean | null;
+  deleted_count: number | null;
+  synced_at: string | null;
 };
