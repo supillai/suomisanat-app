@@ -343,7 +343,16 @@ export const useCloudSync = ({
     const {
       data: { subscription }
     } = client.auth.onAuthStateChange((_event, nextSession) => {
+      const previousUserId = sessionRef.current?.user.id ?? null;
+      const nextUserId = nextSession?.user.id ?? null;
+      const userChanged = previousUserId !== nextUserId;
+
       setSession(nextSession);
+
+      if (!userChanged) {
+        return;
+      }
+
       hasPendingCloudWriteRef.current = false;
       pendingFlushAfterHydrationRef.current = false;
       hydrationBaselineProgressRef.current = progressMapRef.current;

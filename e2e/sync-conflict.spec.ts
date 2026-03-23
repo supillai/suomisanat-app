@@ -384,3 +384,85 @@ test("cloud sync flushes changes made while an earlier save is still running", a
 
 
 
+
+test("cloud sync keeps syncing after a same-user auth refresh", async ({ page }) => {
+  await installMockCloudSync(page, {
+    session: {
+      user: {
+        id: "user-1",
+        email: "learner@example.com"
+      }
+    },
+    localProgress: {},
+    localDailyGoal: 10,
+    serverProgressRows: [],
+    serverDailyGoal: 10
+  });
+
+  await page.goto("/");
+  await waitForMockConflictState(page);
+
+  const progressTab = page.getByRole("tab", { name: "Progress" });
+  await progressTab.click();
+
+  const progressPanel = page.locator("#panel-progress");
+  await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.", { timeout: 10000 });
+
+  await page.evaluate(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          emitAuthStateChange: (event: string, session?: unknown) => void;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    state?.emitAuthStateChange("TOKEN_REFRESHED");
+  });
+
+  await expect(progressPanel.getByRole("status")).toContainText("Cloud sync is up to date.");
+
+  await page.getByRole("tab", { name: "Word List" }).click();
+  await page.getByRole("button", { name: "Known" }).first().click();
+
+  await page.waitForFunction(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          serverProgressRows: Array<{ word_id: number; known: boolean | null; needs_practice: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    return (
+      Boolean(state) &&
+      state.serverProgressRows.length === 1 &&
+      state.upsertLog.some((entry) => entry.table === "user_progress")
+    );
+  }, undefined, { timeout: 10000 });
+
+  const cloudState = await page.evaluate(() => {
+    const state = (
+      window as Window & {
+        __SUOMISANAT_E2E_SYNC_STATE__?: {
+          serverProgressRows: Array<{ word_id: number; known: boolean | null; needs_practice: boolean | null }>;
+          upsertLog: Array<{ table: string; payload: unknown }>;
+        };
+      }
+    ).__SUOMISANAT_E2E_SYNC_STATE__;
+
+    if (!state) return null;
+
+    return {
+      serverProgressRows: state.serverProgressRows,
+      progressWrites: state.upsertLog.filter((entry) => entry.table === "user_progress").length
+    };
+  });
+
+  expect(cloudState).not.toBeNull();
+  expect(cloudState?.progressWrites).toBeGreaterThanOrEqual(1);
+  expect(cloudState?.serverProgressRows).toHaveLength(1);
+  expect(cloudState?.serverProgressRows[0]).toEqual(expect.objectContaining({ known: true, needs_practice: false }));
+  expect(Number.isFinite(cloudState?.serverProgressRows[0]?.word_id)).toBe(true);
+});

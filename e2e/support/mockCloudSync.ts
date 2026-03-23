@@ -67,7 +67,14 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
       serverDailyGoal: initialScenario.serverDailyGoal,
       getSessionCalls: 0,
       pendingProgressUpserts: 0,
-      upsertLog: [] as Array<{ table: string; payload: unknown }>
+      upsertLog: [] as Array<{ table: string; payload: unknown }>,
+      emitAuthStateChange: (event: string, session?: unknown) => {
+        if (typeof session !== "undefined") {
+          state.session = clone(session as typeof state.session);
+        }
+
+        authListeners.forEach((callback) => callback(event, state.session));
+      }
     };
 
     window.localStorage.clear();
@@ -102,7 +109,7 @@ export const installMockCloudSync = async (page: Page, scenario: MockSyncScenari
         signInWithOtp: async () => ({ error: null }),
         signOut: async () => {
           state.session = null;
-          authListeners.forEach((callback) => callback("SIGNED_OUT", null));
+          state.emitAuthStateChange("SIGNED_OUT", null);
           return { error: null };
         }
       },
