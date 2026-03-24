@@ -1,7 +1,7 @@
 import { WORD_POS_OPTIONS, WORD_TOPICS } from "../types";
 import type { VocabularyWord, WordPos, WordTopic } from "../types";
 
-export const WORD_DATASET_VERSION = "v1";
+export const WORD_DATASET_VERSION = "v2";
 export const WORD_DATASET_URL = `/data/words.${WORD_DATASET_VERSION}.json`;
 
 const topicSet = new Set<WordTopic>(WORD_TOPICS);
