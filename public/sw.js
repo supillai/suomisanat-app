@@ -1,11 +1,11 @@
-﻿const CACHE_VERSION = "suomisanat-v4";
+const CACHE_VERSION = "suomisanat-v5";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL_URLS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/data/words.v1.json",
+  "/data/words.v2.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png"
@@ -79,7 +79,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === "/data/words.v1.json") {
+  if (url.pathname === "/data/words.v2.json") {
     event.respondWith(cacheFirst(request));
     return;
   }
