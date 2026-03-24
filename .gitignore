@@ -2,7 +2,8 @@ node_modules
 dist
 .vscode
 .DS_Store
-.env.local
+.env*
+!.env.example
 coverage
 playwright-report
 test-results
