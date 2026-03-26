@@ -37,6 +37,16 @@ const ensureValidEntry = (entry, filePath, index) => {
   }
 };
 
+const normalizeEntry = (entry) => ({
+  id: entry.id,
+  fi: entry.fi.trim(),
+  en: entry.en.trim(),
+  fiSimple: entry.fiSimple.trim(),
+  enSimple: entry.enSimple.trim(),
+  topic: entry.topic.trim(),
+  pos: entry.pos.trim()
+});
+
 const outputPath = path.resolve(outputPathArg);
 const inputPaths = inputPathArgs.map((filePath) => path.resolve(filePath));
 
@@ -45,23 +55,39 @@ const seenIds = new Set();
 const seenFinnish = new Map();
 const skippedDuplicates = [];
 
-for (const inputPath of inputPaths) {
+const preservedInputPath = inputPaths[0];
+const preservedDataset = await readDataset(preservedInputPath);
+let maxPreservedId = 0;
+
+preservedDataset.forEach((entry, index) => {
+  ensureValidEntry(entry, preservedInputPath, index);
+
+  const normalizedEntry = normalizeEntry(entry);
+  if (seenFinnish.has(normalizedEntry.fi)) {
+    throw new Error(`Duplicate Finnish entry ${normalizedEntry.fi} in preserved dataset ${preservedInputPath}`);
+  }
+
+  if (seenIds.has(normalizedEntry.id)) {
+    throw new Error(`Duplicate id ${normalizedEntry.id} in preserved dataset ${preservedInputPath}`);
+  }
+
+  seenIds.add(normalizedEntry.id);
+  seenFinnish.set(normalizedEntry.fi, { id: normalizedEntry.id, source: preservedInputPath });
+  merged.push(normalizedEntry);
+  maxPreservedId = Math.max(maxPreservedId, normalizedEntry.id);
+});
+
+let nextAssignedId = maxPreservedId + 1;
+
+for (const inputPath of inputPaths.slice(1)) {
   const dataset = await readDataset(inputPath);
 
   dataset.forEach((entry, index) => {
     ensureValidEntry(entry, inputPath, index);
 
-    const normalizedEntry = {
-      id: entry.id,
-      fi: entry.fi.trim(),
-      en: entry.en.trim(),
-      fiSimple: entry.fiSimple.trim(),
-      enSimple: entry.enSimple.trim(),
-      topic: entry.topic.trim(),
-      pos: entry.pos.trim()
-    };
-
+    const normalizedEntry = normalizeEntry(entry);
     const existingEntry = seenFinnish.get(normalizedEntry.fi);
+
     if (existingEntry) {
       skippedDuplicates.push({
         fi: normalizedEntry.fi,
@@ -73,9 +99,8 @@ for (const inputPath of inputPaths) {
       return;
     }
 
-    if (seenIds.has(normalizedEntry.id)) {
-      throw new Error(`Duplicate id ${normalizedEntry.id} encountered while keeping ${normalizedEntry.fi}`);
-    }
+    normalizedEntry.id = nextAssignedId;
+    nextAssignedId += 1;
 
     seenIds.add(normalizedEntry.id);
     seenFinnish.set(normalizedEntry.fi, { id: normalizedEntry.id, source: inputPath });
@@ -89,4 +114,6 @@ await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 
 console.log(`Wrote ${merged.length} entries to ${outputPath}`);
+console.log(`Preserved ids 1..${maxPreservedId} from ${preservedInputPath}`);
+console.log(`Assigned new ids ${maxPreservedId + 1}..${merged.length}`);
 console.log(`Skipped ${skippedDuplicates.length} duplicate Finnish entries`);
