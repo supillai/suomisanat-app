@@ -1,12 +1,15 @@
 import { useEffect, useEffectEvent, useRef } from "react";
-import { tabButtonId, tabPanelId } from "../app/app.constants";
-import type { QuizMode } from "../app/app.types";
+import { LEARNING_SCOPE_LABELS, LEARNING_SCOPE_OPTIONS, tabButtonId, tabPanelId } from "../app/app.constants";
+import type { LearningScope, QuizMode } from "../app/app.types";
 import type { VocabularyWord } from "../../types";
+import { getLearningItemLabel } from "../app/learningScope";
 import { useFinePointer } from "../../utils/useFinePointer";
 import { useKeyboardMode } from "../../utils/useKeyboardMode";
 
 type QuizTabProps = {
   quizMode: QuizMode;
+  quizScope: LearningScope;
+  quizPool: VocabularyWord[];
   isAnswered: boolean;
   quizWord: VocabularyWord;
   quizOptions: string[];
@@ -20,6 +23,7 @@ type QuizTabProps = {
   miniDrillProgress: string;
   miniDrillLastQuestion: boolean;
   onQuizModeChange: (mode: QuizMode) => void;
+  onQuizScopeChange: (scope: LearningScope) => void;
   onTypingValueChange: (value: string) => void;
   onAnswerMcq: (option: string) => void;
   onAnswerTyping: () => void;
@@ -38,6 +42,8 @@ const isButtonTarget = (target: EventTarget | null): boolean => target instanceo
 
 export const QuizTab = ({
   quizMode,
+  quizScope,
+  quizPool,
   isAnswered,
   quizWord,
   quizOptions,
@@ -51,6 +57,7 @@ export const QuizTab = ({
   miniDrillProgress,
   miniDrillLastQuestion,
   onQuizModeChange,
+  onQuizScopeChange,
   onTypingValueChange,
   onAnswerMcq,
   onAnswerTyping,
@@ -64,6 +71,8 @@ export const QuizTab = ({
   const keyboardMode = useKeyboardMode();
   const scoreLabel = `${quizCorrect} correct / ${quizWrong} wrong`;
   const compactScoreLabel = `${quizCorrect}/${quizWrong}`;
+  const quizItemLabel = getLearningItemLabel(quizWord);
+  const quizScopeSummaryLabel = quizScope === "all" ? `${quizPool.length} items ready` : quizScope === "words" ? `${quizPool.length} words ready` : `${quizPool.length} phrases ready`;
   const nextQuizLabel = miniDrillLastQuestion
     ? isAnswered
       ? "Finish Mini Drill"
@@ -200,6 +209,26 @@ export const QuizTab = ({
             <span className="hidden md:inline">Score: {scoreLabel}</span>
           </span>
         </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="eyebrow opacity-70">Content</span>
+          <div className="touch-scroll-row flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+            {LEARNING_SCOPE_OPTIONS.map((scope) => (
+              <button
+                key={scope}
+                className={`chip-button shrink-0 ${quizScope === scope ? "chip-button-active" : "chip-button-idle"}`}
+                type="button"
+                aria-pressed={quizScope === scope}
+                aria-label={LEARNING_SCOPE_LABELS[scope]}
+                disabled={miniDrillActive}
+                onClick={() => onQuizScopeChange(scope)}
+              >
+                {LEARNING_SCOPE_LABELS[scope]}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-slate-500">{quizScopeSummaryLabel}</span>
+        </div>
       </div>
 
       <div className="surface-subtle quiz-card rounded-[26px] px-4 py-4 md:p-5">
@@ -251,11 +280,11 @@ export const QuizTab = ({
 
         {quizMode === "typing" && (
           <>
-            <p className="mt-2.5 text-sm text-slate-600 md:hidden">Type the Finnish word.</p>
-            <p className="mt-2.5 hidden text-sm text-slate-600 md:block">Type the Finnish word:</p>
+            <p className="mt-2.5 text-sm text-slate-600 md:hidden">Type the Finnish {quizItemLabel}.</p>
+            <p className="mt-2.5 hidden text-sm text-slate-600 md:block">Type the Finnish {quizItemLabel}:</p>
             <h2 className="quiz-word mt-1.5 text-[2rem] font-semibold leading-[1.08] text-ink md:text-[2.4rem]">{quizWord.en}</h2>
             <label htmlFor="quiz-typing-input" className="sr-only">
-              Type the Finnish word for {quizWord.en}
+              Type the Finnish {quizItemLabel} for {quizWord.en}
             </label>
             <input
               id="quiz-typing-input"
@@ -267,7 +296,7 @@ export const QuizTab = ({
                     ? "text-input-correct"
                     : "text-input-error"
               }`}
-              placeholder="Write Finnish word"
+              placeholder={`Write Finnish ${quizItemLabel}`}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"

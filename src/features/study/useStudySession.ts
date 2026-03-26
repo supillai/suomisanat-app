@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ProgressMap, VocabularyWord } from "../../types";
 import { randomFrom } from "../../utils/collections";
-import type { StudyDecision, StudyFilter } from "../app/app.types";
+import type { LearningScope, StudyDecision, StudyFilter } from "../app/app.types";
+import { filterWordsByScope } from "../app/learningScope";
 import type { MarkWord } from "../progress/useProgressStore";
 import { buildStudyHints } from "./study.utils";
 
@@ -14,6 +15,9 @@ type UseStudySessionOptions = {
 export type StudySession = {
   studyFilter: StudyFilter;
   setStudyFilter: (filter: StudyFilter) => void;
+  studyScope: LearningScope;
+  setStudyScope: (scope: LearningScope) => void;
+  scopedWords: VocabularyWord[];
   studyWord: VocabularyWord;
   studyPool: VocabularyWord[];
   reveal: boolean;
@@ -33,6 +37,7 @@ export type StudySession = {
 export const useStudySession = ({ words, progressMap, markWord }: UseStudySessionOptions): StudySession => {
   const firstWord = words[0]!;
   const [studyFilter, setStudyFilter] = useState<StudyFilter>("all");
+  const [studyScope, setStudyScope] = useState<LearningScope>("all");
   const [studyWordId, setStudyWordId] = useState<number>(() => firstWord.id);
   const [reveal, setReveal] = useState(false);
   const [studyHintLevel, setStudyHintLevel] = useState(0);
@@ -40,11 +45,15 @@ export const useStudySession = ({ words, progressMap, markWord }: UseStudySessio
   const [studyKnownSession, setStudyKnownSession] = useState(0);
   const [studyPracticeSession, setStudyPracticeSession] = useState(0);
   const wordsById = useMemo(() => new Map(words.map((word) => [word.id, word] as const)), [words]);
+  const scopedWords = useMemo(() => {
+    const filteredWords = filterWordsByScope(words, studyScope);
+    return filteredWords.length > 0 ? filteredWords : words;
+  }, [studyScope, words]);
 
   const studyPool = useMemo(() => {
-    if (studyFilter === "all") return words;
+    if (studyFilter === "all") return scopedWords;
 
-    return words.filter((word) => {
+    return scopedWords.filter((word) => {
       const known = progressMap[word.id]?.known ?? false;
       const needsPractice = progressMap[word.id]?.needsPractice ?? false;
 
@@ -52,27 +61,28 @@ export const useStudySession = ({ words, progressMap, markWord }: UseStudySessio
       if (studyFilter === "practice") return needsPractice;
       return !known;
     });
-  }, [progressMap, studyFilter, words]);
+  }, [progressMap, scopedWords, studyFilter]);
 
-  const studyWord = wordsById.get(studyWordId) ?? firstWord;
+  const scopedFallbackWord = scopedWords[0] ?? firstWord;
+  const studyWord = wordsById.get(studyWordId) ?? scopedFallbackWord;
   const studyHints = useMemo(() => buildStudyHints(studyWord), [studyWord]);
 
   useEffect(() => {
     if (!studyPool.some((word) => word.id === studyWordId)) {
-      const fallbackWord = studyPool.length > 0 ? studyPool[0] : firstWord;
+      const fallbackWord = studyPool[0] ?? scopedFallbackWord;
       setStudyWordId(fallbackWord.id);
       setReveal(false);
       setStudyHintLevel(0);
       setStudyDecision("none");
     }
-  }, [firstWord, studyPool, studyWordId]);
+  }, [scopedFallbackWord, studyPool, studyWordId]);
 
   useEffect(() => {
     setStudyHintLevel(0);
   }, [studyWordId]);
 
   const nextStudyWord = (): void => {
-    const pool = studyPool.length > 0 ? studyPool : words;
+    const pool = studyPool.length > 0 ? studyPool : scopedWords;
     setStudyWordId(randomFrom(pool).id);
     setReveal(false);
     setStudyHintLevel(0);
@@ -106,6 +116,9 @@ export const useStudySession = ({ words, progressMap, markWord }: UseStudySessio
   return {
     studyFilter,
     setStudyFilter,
+    studyScope,
+    setStudyScope,
+    scopedWords,
     studyWord,
     studyPool,
     reveal,

@@ -1,4 +1,4 @@
-﻿import { useAppState } from "../app/AppStateContext";
+import { useAppState } from "../app/AppStateContext";
 import { QuizTab } from "./QuizTab";
 
 export default function QuizTabScreen() {
@@ -7,6 +7,8 @@ export default function QuizTabScreen() {
   return (
     <QuizTab
       quizMode={quizSession.quizMode}
+      quizScope={quizSession.quizScope}
+      quizPool={quizSession.quizPool}
       isAnswered={quizSession.isAnswered}
       quizWord={quizSession.quizWord}
       quizOptions={quizSession.quizOptions}
@@ -20,6 +22,7 @@ export default function QuizTabScreen() {
       miniDrillProgress={quizSession.miniDrillProgress}
       miniDrillLastQuestion={quizSession.miniDrillLastQuestion}
       onQuizModeChange={quizSession.setQuizMode}
+      onQuizScopeChange={quizSession.setQuizScope}
       onTypingValueChange={quizSession.setTypingValue}
       onAnswerMcq={quizSession.answerMcq}
       onAnswerTyping={quizSession.answerTyping}

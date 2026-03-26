@@ -1,7 +1,8 @@
-﻿import { useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import type { ProgressMap, VocabularyWord } from "../../types";
 import { randomFrom } from "../../utils/collections";
-import type { QuizMode } from "../app/app.types";
+import type { LearningScope, QuizMode } from "../app/app.types";
+import { filterWordsByScope } from "../app/learningScope";
 import type { MarkWord } from "../progress/useProgressStore";
 import {
   buildMiniDrillRecommendations,
@@ -20,6 +21,9 @@ type UseQuizSessionOptions = {
 export type QuizSession = {
   quizMode: QuizMode;
   setQuizMode: (mode: QuizMode) => void;
+  quizScope: LearningScope;
+  setQuizScope: (scope: LearningScope) => void;
+  quizPool: VocabularyWord[];
   isAnswered: boolean;
   quizWord: VocabularyWord;
   quizOptions: string[];
@@ -147,8 +151,13 @@ const quizReducer = (state: QuizState, action: QuizAction): QuizState => {
 
 export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionOptions): QuizSession => {
   const [state, dispatch] = useReducer(quizReducer, words, createInitialQuizState);
+  const [quizScope, setQuizScope] = useState<LearningScope>("all");
   const wordsById = useMemo(() => new Map(words.map((word) => [word.id, word] as const)), [words]);
-  const quizWord = wordsById.get(state.quizWordId) ?? words[0]!;
+  const quizPool = useMemo(() => {
+    const filteredWords = filterWordsByScope(words, quizScope);
+    return filteredWords.length > 0 ? filteredWords : words;
+  }, [quizScope, words]);
+  const quizWord = wordsById.get(state.quizWordId) ?? quizPool[0] ?? words[0]!;
 
   const miniDrillRecommendations = useMemo(() => buildMiniDrillRecommendations(words, progressMap), [progressMap, words]);
   const miniDrillActive = state.miniDrillQueue.length > 0;
@@ -157,11 +166,24 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
     : "";
   const miniDrillLastQuestion = miniDrillActive && state.miniDrillIndex >= state.miniDrillQueue.length - 1;
 
+  useEffect(() => {
+    if (miniDrillActive) {
+      return;
+    }
+
+    const nextWord = quizPool.find((word) => word.id === state.quizWordId) ?? quizPool[0] ?? words[0]!;
+    dispatch({
+      type: "set_question",
+      wordId: nextWord.id,
+      options: pickQuizOptions(nextWord, quizPool)
+    });
+  }, [miniDrillActive, quizPool, quizScope, state.quizWordId, words]);
+
   const setQuestion = (word: VocabularyWord): void => {
     dispatch({
       type: "set_question",
       wordId: word.id,
-      options: pickQuizOptions(word, words)
+      options: pickQuizOptions(word, quizPool)
     });
   };
 
@@ -203,7 +225,7 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
       dispatch({ type: "stop_mini_drill" });
     }
 
-    setQuestion(randomFrom(words));
+    setQuestion(randomFrom(quizPool));
   };
 
   const answerMcq = (option: string): void => {
@@ -237,6 +259,9 @@ export const useQuizSession = ({ words, progressMap, markWord }: UseQuizSessionO
   return {
     quizMode: state.quizMode,
     setQuizMode: (mode) => dispatch({ type: "set_quiz_mode", mode }),
+    quizScope,
+    setQuizScope,
+    quizPool,
     isAnswered: state.isAnswered,
     quizWord,
     quizOptions: state.quizOptions,

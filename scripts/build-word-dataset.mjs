@@ -10,6 +10,14 @@ if (!outputPathArg || inputPathArgs.length === 0) {
 
 const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
 
+const normalizeFinnishKey = (value) =>
+  value
+    .trim()
+    .toLocaleLowerCase("fi-FI")
+    .replace(/[.,!?;:\u2026'"`\u00b4\u2019\u2018\-()/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const readDataset = async (filePath) => {
   const file = await readFile(filePath, "utf8");
   const value = JSON.parse(file);
@@ -53,6 +61,7 @@ const inputPaths = inputPathArgs.map((filePath) => path.resolve(filePath));
 const merged = [];
 const seenIds = new Set();
 const seenFinnish = new Map();
+const seenNormalizedFinnish = new Map();
 const skippedDuplicates = [];
 
 const preservedInputPath = inputPaths[0];
@@ -73,6 +82,9 @@ preservedDataset.forEach((entry, index) => {
 
   seenIds.add(normalizedEntry.id);
   seenFinnish.set(normalizedEntry.fi, { id: normalizedEntry.id, source: preservedInputPath });
+  if (!seenNormalizedFinnish.has(normalizeFinnishKey(normalizedEntry.fi))) {
+    seenNormalizedFinnish.set(normalizeFinnishKey(normalizedEntry.fi), { id: normalizedEntry.id, source: preservedInputPath, fi: normalizedEntry.fi });
+  }
   merged.push(normalizedEntry);
   maxPreservedId = Math.max(maxPreservedId, normalizedEntry.id);
 });
@@ -86,7 +98,8 @@ for (const inputPath of inputPaths.slice(1)) {
     ensureValidEntry(entry, inputPath, index);
 
     const normalizedEntry = normalizeEntry(entry);
-    const existingEntry = seenFinnish.get(normalizedEntry.fi);
+    const normalizedKey = normalizeFinnishKey(normalizedEntry.fi);
+    const existingEntry = seenFinnish.get(normalizedEntry.fi) ?? seenNormalizedFinnish.get(normalizedKey);
 
     if (existingEntry) {
       skippedDuplicates.push({
@@ -104,6 +117,7 @@ for (const inputPath of inputPaths.slice(1)) {
 
     seenIds.add(normalizedEntry.id);
     seenFinnish.set(normalizedEntry.fi, { id: normalizedEntry.id, source: inputPath });
+    seenNormalizedFinnish.set(normalizedKey, { id: normalizedEntry.id, source: inputPath, fi: normalizedEntry.fi });
     merged.push(normalizedEntry);
   });
 }

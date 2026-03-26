@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "fi": "Miss\u00e4 kirjasto on?",
+    "en": "Where is the library?",
+    "fiSimple": "Kysymys, kun etsit kirjastoa kaupungissa.",
+    "enSimple": "A question to ask when you are looking for the library.",
+    "topic": "city",
+    "pos": "phrase"
+  },
+  {
+    "id": 2,
+    "fi": "Voinko harjoitella suomea kanssasi?",
+    "en": "Can I practice Finnish with you?",
+    "fiSimple": "T\u00e4ll\u00e4 pyyd\u00e4t lupaa harjoitella kielt\u00e4 toisen ihmisen kanssa.",
+    "enSimple": "Use this to ask if you can practice the language with someone.",
+    "topic": "communication",
+    "pos": "phrase"
+  },
+  {
+    "id": 3,
+    "fi": "Tarvitsen hetken aikaa.",
+    "en": "I need a moment.",
+    "fiSimple": "T\u00e4m\u00e4n voi sanoa, kun tarvitset pienen tauon tai lis\u00e4ajan.",
+    "enSimple": "You can say this when you need a short pause or extra time.",
+    "topic": "daily",
+    "pos": "phrase"
+  },
+  {
+    "id": 4,
+    "fi": "Kiitos avusta.",
+    "en": "Thank you for the help.",
+    "fiSimple": "T\u00e4ll\u00e4 kiit\u00e4t toista ihmist\u00e4 saadusta avusta.",
+    "enSimple": "Use this to thank another person for their help.",
+    "topic": "social",
+    "pos": "phrase"
+  }
+]

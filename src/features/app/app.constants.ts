@@ -1,5 +1,5 @@
 import { WORD_POS_OPTIONS, WORD_TOPICS } from "../../types";
-import type { StudyFilter, Tab } from "./app.types";
+import type { LearningScope, StudyFilter, Tab } from "./app.types";
 
 export const DEFAULT_DAILY_GOAL = 20;
 export const SYNC_DEBOUNCE_MS = 900;
@@ -13,6 +13,7 @@ export const TAB_CONFIG: Array<{ id: Tab; label: string }> = [
 
 export const TOPICS = [...WORD_TOPICS];
 export const POS_OPTIONS = [...WORD_POS_OPTIONS];
+export const LEARNING_SCOPE_OPTIONS: LearningScope[] = ["all", "words", "phrases"];
 
 export const TOPIC_LABELS = {
   core: "Core",
@@ -58,6 +59,12 @@ export const POS_LABELS = {
   closing: "Closing",
   other: "Other"
 } as const;
+
+export const LEARNING_SCOPE_LABELS: Record<LearningScope, string> = {
+  all: "All",
+  words: "Words",
+  phrases: "Phrases"
+};
 
 export const STUDY_FILTER_LABELS: Record<StudyFilter, string> = {
   all: "All Cards",

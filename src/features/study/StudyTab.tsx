@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from "react";
-import { STUDY_FILTER_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
-import type { StudyDecision, StudyFilter } from "../app/app.types";
+import { LEARNING_SCOPE_LABELS, LEARNING_SCOPE_OPTIONS, STUDY_FILTER_LABELS, tabButtonId, tabPanelId } from "../app/app.constants";
+import type { LearningScope, StudyDecision, StudyFilter } from "../app/app.types";
 import { studyExample } from "./study.utils";
 import type { VocabularyWord } from "../../types";
 import { useFinePointer } from "../../utils/useFinePointer";
@@ -17,6 +17,7 @@ const STUDY_CARD_ADVANCE_MS = 220;
 
 type StudyTabProps = {
   studyFilter: StudyFilter;
+  studyScope: LearningScope;
   studyPool: VocabularyWord[];
   studyWord: VocabularyWord;
   reveal: boolean;
@@ -35,6 +36,7 @@ type StudyTabProps = {
   goalPct: number;
   hasStudyActivity: boolean;
   onStudyFilterChange: (filter: StudyFilter) => void;
+  onStudyScopeChange: (scope: LearningScope) => void;
   onRevealStudyWord: () => void;
   onRevealStudyHint: () => void;
   onNextStudyWord: () => void;
@@ -110,6 +112,7 @@ const getSessionActivityCopy = (studyKnownSession: number, studyPracticeSession:
 
 export const StudyTab = ({
   studyFilter,
+  studyScope,
   studyPool,
   studyWord,
   reveal,
@@ -128,6 +131,7 @@ export const StudyTab = ({
   goalPct,
   hasStudyActivity,
   onStudyFilterChange,
+  onStudyScopeChange,
   onRevealStudyWord,
   onRevealStudyHint,
   onNextStudyWord,
@@ -154,6 +158,12 @@ export const StudyTab = ({
   const supportsKeyboardUI = useFinePointer();
   const keyboardMode = useKeyboardMode();
   const cardsInModeLabel = `${studyPool.length} ${studyPool.length === 1 ? "card" : "cards"}`;
+  const compactScopeLabels: Record<LearningScope, string> = {
+    all: "All content",
+    words: "Words",
+    phrases: "Phrases"
+  };
+  const scopeSummaryLabel = studyScope === "all" ? "All content" : studyScope === "words" ? "Words only" : "Phrases only";
   const showHintCounter = !reveal && studyHintLevel > 0;
   const studyExampleText = studyExample(studyWord);
   const currentHint = studyHintLevel > 0 ? studyHints[studyHintLevel - 1] : null;
@@ -461,6 +471,7 @@ export const StudyTab = ({
       <div className="study-progress-inline flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
         <div className="study-progress-chips flex flex-wrap items-center gap-1.5 md:gap-2">
           <span className="state-pill state-pill-neutral">{STUDY_FILTER_LABELS[studyFilter]}</span>
+          <span className="state-pill state-pill-neutral">{LEARNING_SCOPE_LABELS[studyScope]}</span>
           <span className="state-pill state-pill-neutral">{cardsInModeLabel}</span>
           <span className="state-pill state-pill-neutral">{remainingCopy}</span>
         </div>
@@ -498,6 +509,8 @@ export const StudyTab = ({
     <div className="flex flex-wrap items-center gap-2 px-1 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-slate-500 md:hidden" aria-label="Study progress summary">
       <span>{STUDY_FILTER_LABELS[studyFilter]}</span>
       <span aria-hidden="true" className="opacity-40">/</span>
+      <span>{LEARNING_SCOPE_LABELS[studyScope]}</span>
+      <span aria-hidden="true" className="opacity-40">/</span>
       <span>{knownCount}/{totalWords} known</span>
       <span aria-hidden="true" className="opacity-40">/</span>
       <span>{reviewedToday}/{dailyGoal} today</span>
@@ -517,21 +530,39 @@ export const StudyTab = ({
             {studyProgressBand}
           </div>
 
-          <label className="study-toolbar-compact-filter">
-            <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
-            <select
-              aria-label="Study filter"
-              className="study-filter-select mt-2"
-              value={studyFilter}
-              onChange={(event) => onStudyFilterChange(event.target.value as StudyFilter)}
-            >
-              {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
-                <option key={`compact-filter-${mode}`} value={mode}>
-                  {STUDY_FILTER_LABELS[mode]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="study-toolbar-compact-controls">
+            <label className="study-toolbar-compact-filter">
+              <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Card set</span>
+              <select
+                aria-label="Study filter"
+                className="study-filter-select mt-2"
+                value={studyFilter}
+                onChange={(event) => onStudyFilterChange(event.target.value as StudyFilter)}
+              >
+                {(["all", "unknown", "known", "practice"] as StudyFilter[]).map((mode) => (
+                  <option key={`compact-filter-${mode}`} value={mode}>
+                    {STUDY_FILTER_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="study-toolbar-compact-filter">
+              <span className="study-toolbar-compact-filter-label text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Content</span>
+              <select
+                aria-label="Study content"
+                className="study-filter-select mt-2"
+                value={studyScope}
+                onChange={(event) => onStudyScopeChange(event.target.value as LearningScope)}
+              >
+                {LEARNING_SCOPE_OPTIONS.map((scope) => (
+                  <option key={`compact-scope-${scope}`} value={scope}>
+                    {compactScopeLabels[scope]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="study-toolbar-default-filters touch-scroll-row flex items-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
             <span className="study-filter-label hidden md:inline-flex">Study mode</span>
@@ -548,6 +579,22 @@ export const StudyTab = ({
               </button>
             ))}
             <span className="study-filter-note hidden lg:inline-flex">{sessionActivityCopy}</span>
+          </div>
+
+          <div className="study-toolbar-scope-filters touch-scroll-row flex items-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+            <span className="study-filter-label hidden md:inline-flex">Content</span>
+            {LEARNING_SCOPE_OPTIONS.map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                aria-label={LEARNING_SCOPE_LABELS[scope]}
+                className={`chip-button shrink-0 ${studyScope === scope ? "chip-button-active" : "chip-button-idle"}`}
+                onClick={() => onStudyScopeChange(scope)}
+              >
+                {LEARNING_SCOPE_LABELS[scope]}
+              </button>
+            ))}
+            <span className="study-filter-note hidden lg:inline-flex">{scopeSummaryLabel}</span>
           </div>
 
           {mobileStudySummary}
@@ -900,5 +947,4 @@ export const StudyTab = ({
     </section>
   );
 };
-
 

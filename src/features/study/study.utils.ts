@@ -1,19 +1,24 @@
 import type { VocabularyWord } from "../../types";
+import { isPhraseLikeWord } from "../app/learningScope";
 
 const verbExampleOverrides: Record<string, string> = {
-  "her\u00e4sin": "Esimerkki: Min\u00e4 her\u00e4sin aikaisin.",
-  menin: "Esimerkki: Min\u00e4 menin kauppaan.",
-  tulin: "Esimerkki: Min\u00e4 tulin kotiin.",
-  tapasin: "Esimerkki: Min\u00e4 tapasin yst\u00e4v\u00e4n.",
-  "s\u00f6in": "Esimerkki: Min\u00e4 s\u00f6in aamupalaa.",
-  "k\u00e4vin": "Esimerkki: Min\u00e4 k\u00e4vin kirjastossa.",
-  palasin: "Esimerkki: Min\u00e4 palasin kotiin."
+  "heräsin": "Esimerkki: Minä heräsin aikaisin.",
+  menin: "Esimerkki: Minä menin kauppaan.",
+  tulin: "Esimerkki: Minä tulin kotiin.",
+  tapasin: "Esimerkki: Minä tapasin ystävän.",
+  "söin": "Esimerkki: Minä söin aamupalaa.",
+  "kävin": "Esimerkki: Minä kävin kirjastossa.",
+  palasin: "Esimerkki: Minä palasin kotiin."
 };
 
 export const studyExample = (word: VocabularyWord): string => {
+  if (isPhraseLikeWord(word)) {
+    return `Esimerkki: Voit sanoa: "${word.fi}"`;
+  }
+
   if (word.pos === "verb") {
     if (word.fi === "olla") {
-      return "Esimerkki: Min\u00e4 haluan olla ajoissa.";
+      return "Esimerkki: Minä haluan olla ajoissa.";
     }
 
     const override = verbExampleOverrides[word.fi];
@@ -21,37 +26,41 @@ export const studyExample = (word: VocabularyWord): string => {
       return override;
     }
 
-    return `Esimerkki: Min\u00e4 yrit\u00e4n ${word.fi} t\u00e4n\u00e4\u00e4n.`;
+    return `Esimerkki: Minä yritän ${word.fi} tänään.`;
   }
 
   if (word.pos === "noun") {
-    return `Esimerkki: T\u00e4m\u00e4 on ${word.fi}.`;
+    return `Esimerkki: Tämä on ${word.fi}.`;
   }
 
   if (word.pos === "adjective") {
-    return `Esimerkki: T\u00e4m\u00e4 teht\u00e4v\u00e4 on ${word.fi}.`;
+    return `Esimerkki: Tämä tehtävä on ${word.fi}.`;
   }
 
   if (word.pos === "adverb") {
-    return `Esimerkki: H\u00e4n puhuu ${word.fi}.`;
+    return `Esimerkki: Hän puhuu ${word.fi}.`;
   }
 
   if (word.pos === "pronoun") {
     return `Esimerkki: Sana "${word.fi}" auttaa keskustelussa.`;
   }
 
-  return `Esimerkki: K\u00e4yt\u00e4n sanaa "${word.fi}" arjessa.`;
+  return `Esimerkki: Käytän sanaa "${word.fi}" arjessa.`;
 };
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const normalizeStudyText = (value: string): string => value.trim().toLocaleLowerCase("fi-FI");
+
 const maskedSimpleExplanation = (word: VocabularyWord): string => {
   if (!word.fiSimple.trim()) return "";
+  if (normalizeStudyText(word.fiSimple) === normalizeStudyText(word.fi)) return "";
 
   const escapedWord = escapeRegExp(word.fi);
   if (!escapedWord) return word.fiSimple;
 
-  return word.fiSimple.replace(new RegExp(escapedWord, "giu"), "____");
+  const masked = word.fiSimple.replace(new RegExp(escapedWord, "giu"), "____");
+  return masked.trim() === "____" ? "" : masked;
 };
 
 export const buildStudyHints = (word: VocabularyWord): string[] => {
