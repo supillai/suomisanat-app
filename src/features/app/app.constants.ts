@@ -26,7 +26,22 @@ export const TOPIC_LABELS = {
   describing: "Describing",
   weather: "Weather",
   emotions: "Emotions",
-  family: "Family"
+  family: "Family",
+  admin: "Admin",
+  communication: "Communication",
+  daily: "Daily Life",
+  housing: "Housing",
+  job_seeking: "Job Seeking",
+  media: "Media",
+  opinion: "Opinion",
+  shopping: "Shopping",
+  social: "Social",
+  social_services: "Social Services",
+  study: "Study",
+  studying: "Studying",
+  transport: "Transport",
+  travel: "Travel",
+  writing: "Writing"
 } as const;
 
 export const POS_LABELS = {
@@ -35,7 +50,13 @@ export const POS_LABELS = {
   adjective: "Adjective",
   adverb: "Adverb",
   pronoun: "Pronoun",
-  other: "Phrase"
+  word: "Word",
+  phrase: "Phrase",
+  sentence: "Sentence",
+  connector: "Connector",
+  opening: "Opening",
+  closing: "Closing",
+  other: "Other"
 } as const;
 
 export const STUDY_FILTER_LABELS: Record<StudyFilter, string> = {

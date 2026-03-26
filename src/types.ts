@@ -1,8 +1,36 @@
-export const WORD_TOPICS = ["core", "time", "home", "food", "city", "health", "work", "verbs", "describing", "weather", "emotions", "family"] as const;
+export const WORD_TOPICS = [
+  "core",
+  "time",
+  "home",
+  "food",
+  "city",
+  "health",
+  "work",
+  "verbs",
+  "describing",
+  "weather",
+  "emotions",
+  "family",
+  "admin",
+  "communication",
+  "daily",
+  "housing",
+  "job_seeking",
+  "media",
+  "opinion",
+  "shopping",
+  "social",
+  "social_services",
+  "study",
+  "studying",
+  "transport",
+  "travel",
+  "writing"
+] as const;
 
 export type WordTopic = (typeof WORD_TOPICS)[number];
 
-export const WORD_POS_OPTIONS = ["noun", "verb", "adjective", "adverb", "pronoun", "other"] as const;
+export const WORD_POS_OPTIONS = ["noun", "verb", "adjective", "adverb", "pronoun", "word", "phrase", "sentence", "connector", "opening", "closing", "other"] as const;
 
 export type WordPos = (typeof WORD_POS_OPTIONS)[number];
 
