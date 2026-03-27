@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "fi": "kiitos",
+    "en": "thank you",
+    "fiSimple": "T\u00e4m\u00e4 sana sanotaan, kun haluat osoittaa olevasi kiitollinen.",
+    "enSimple": "Say this when you want to show gratitude.",
+    "topic": "social",
+    "pos": "word"
+  },
+  {
+    "id": 2,
+    "fi": "kirja",
+    "en": "book",
+    "fiSimple": "T\u00e4ll\u00e4 luetaan tarinoita tai opiskellaan.",
+    "enSimple": "You read stories or study with this.",
+    "topic": "study",
+    "pos": "noun"
+  },
+  {
+    "id": 3,
+    "fi": "yst\u00e4v\u00e4",
+    "en": "friend",
+    "fiSimple": "Ihminen, jonka seurassa viihdyt ja johon luotat.",
+    "enSimple": "A person whose company you enjoy and trust.",
+    "topic": "social",
+    "pos": "noun"
+  },
+  {
+    "id": 4,
+    "fi": "aamu",
+    "en": "morning",
+    "fiSimple": "P\u00e4iv\u00e4n alku ennen puoltap\u00e4iv\u00e4\u00e4.",
+    "enSimple": "The start of the day before noon.",
+    "topic": "time",
+    "pos": "noun"
+  },
+  {
+    "id": 5,
+    "fi": "opiskella",
+    "en": "to study",
+    "fiSimple": "Harjoitella ja oppia uutta asiaa.",
+    "enSimple": "To practice and learn something new.",
+    "topic": "studying",
+    "pos": "verb"
+  },
+  {
+    "id": 6,
+    "fi": "rauhallinen",
+    "en": "calm",
+    "fiSimple": "Tunne tai paikka, jossa on levollinen olo.",
+    "enSimple": "A feeling or place that is peaceful.",
+    "topic": "describing",
+    "pos": "adjective"
+  },
+  {
+    "id": 7,
+    "fi": "hitaasti",
+    "en": "slowly",
+    "fiSimple": "Tehd\u00e4 jotakin ilman kiirett\u00e4.",
+    "enSimple": "To do something without rushing.",
+    "topic": "describing",
+    "pos": "adverb"
+  },
+  {
+    "id": 8,
+    "fi": "ty\u00f6paikka",
+    "en": "workplace",
+    "fiSimple": "Paikka, jossa ihmiset tekev\u00e4t ty\u00f6t\u00e4.",
+    "enSimple": "A place where people do their work.",
+    "topic": "work",
+    "pos": "noun"
+  },
+  {
+    "id": 9,
+    "fi": "Miss\u00e4 kirjasto on?",
+    "en": "Where is the library?",
+    "fiSimple": "Kysymys, kun etsit kirjastoa kaupungissa.",
+    "enSimple": "A question to ask when you are looking for the library.",
+    "topic": "city",
+    "pos": "phrase"
+  },
+  {
+    "id": 10,
+    "fi": "Voinko harjoitella suomea kanssasi?",
+    "en": "Can I practice Finnish with you?",
+    "fiSimple": "T\u00e4ll\u00e4 pyyd\u00e4t lupaa harjoitella kielt\u00e4 toisen ihmisen kanssa.",
+    "enSimple": "Use this to ask if you can practice the language with someone.",
+    "topic": "communication",
+    "pos": "phrase"
+  },
+  {
+    "id": 11,
+    "fi": "Tarvitsen hetken aikaa.",
+    "en": "I need a moment.",
+    "fiSimple": "T\u00e4m\u00e4n voi sanoa, kun tarvitset pienen tauon tai lis\u00e4ajan.",
+    "enSimple": "You can say this when you need a short pause or extra time.",
+    "topic": "daily",
+    "pos": "phrase"
+  },
+  {
+    "id": 12,
+    "fi": "Kiitos avusta.",
+    "en": "Thank you for the help.",
+    "fiSimple": "T\u00e4ll\u00e4 kiit\u00e4t toista ihmist\u00e4 saadusta avusta.",
+    "enSimple": "Use this to thank another person for their help.",
+    "topic": "social",
+    "pos": "phrase"
+  }
+]
