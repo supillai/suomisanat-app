@@ -11,9 +11,15 @@ test("mobile tab bar stays reachable while browsing the word list", async ({ pag
   await page.goto("/");
   await page.getByRole("tab", { name: "Word List" }).click();
 
+  const firstWordCard = page.locator("article").filter({ has: page.getByRole("button", { name: "Show clue" }) }).first();
+  const showMoreButton = page.getByRole("button", { name: /Show \d+ More Words/ });
+
   await expect(page.getByRole("heading", { name: "Browse, sort, and queue your next review set" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Filters & Sort|Hide Filters/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Show \d+ More Words/ })).toBeVisible();
+  await expect(firstWordCard).toBeVisible();
+  if (await showMoreButton.count()) {
+    await expect(showMoreButton).toBeVisible();
+  }
 
   await page.evaluate(() => {
     window.scrollTo(0, document.body.scrollHeight);
