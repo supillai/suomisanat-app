@@ -2,6 +2,12 @@
 
 SuomiSanat is a Finnish YKI level 3 vocabulary trainer with offline-first study tools and optional Supabase cloud sync.
 
+## Development process
+
+This project was developed with AI coding agents under human direction, review, and verification.
+
+For a longer write-up, see [Building SuomiSanat With AI Agents](https://blog.suje.sh/posts/building-suomisanat-with-ai-agents/).
+
 ## Stack
 
 - Vite
