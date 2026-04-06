@@ -46,3 +46,12 @@ test("cloud sync details panel opens from progress", async ({ page }) => {
   await expect(progressPanel.getByRole("status")).toContainText(/Cloud sync is disabled\.|Signed out\. Progress is saved locally in this browser\./);
   await expect(progressPanel.getByRole("button", { name: "Hide Details" })).toBeVisible();
 });
+
+test("footer links to the shipped privacy placeholder page", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("link", { name: "Privacy Notice" }).click();
+
+  await expect(page).toHaveURL(/\/privacy\.html$/);
+  await expect(page.getByRole("heading", { name: "Privacy Notice Placeholder" })).toBeVisible();
+});

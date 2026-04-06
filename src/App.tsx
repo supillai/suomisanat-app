@@ -18,8 +18,13 @@ const AppFrame = ({ children }: { children: ReactNode }) => (
 const AppFooter = () => (
   <footer className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-600 md:mt-8">
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-      <span>SuomiSanat — offline-first Finnish vocab trainer.</span>
+      <span>SuomiSanat - offline-first Finnish vocab trainer.</span>
+      <a
+        href="/privacy.html"
+        className="font-semibold text-teal-700 underline decoration-teal-200 underline-offset-4 transition hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+      >
         Privacy Notice
+      </a>
     </div>
   </footer>
 );

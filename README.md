@@ -39,6 +39,8 @@ npm run verify
 
 This public branch ships only a small self-authored sample dataset in `public/data/words.v4.json` and `data/useful-phrases.json`.
 
+The bundled sample data files are included under the same MIT license as the source code in this repository.
+
 The application supports larger private or separately licensed datasets with the same schema, but those source lists are not included here.
 
 The source code is MIT licensed. Review rights and licensing separately before committing third-party vocabulary lists or generated dataset files.

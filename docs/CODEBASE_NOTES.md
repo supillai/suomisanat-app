@@ -29,17 +29,18 @@ Quick orientation for agents; keep concise and update when structure shifts.
 
 ## Runbook: update `public/data/words.v4.json`
 1) Edit or regenerate `public/data/words.v4.json` (keep ids stable, no duplicate Finnish terms).
-2) If schema changes or a new version is needed, bump `WORD_DATASET_VERSION`/`WORD_DATASET_URL` in `src/data/word-data.ts` and copy the JSON to the new filename (e.g., `words.v5.json`).
+2) If schema changes or a new version is needed, bump `WORD_DATASET_VERSION`/`WORD_DATASET_URL` in `src/data/word-data.ts`, update `WORD_DATASET_URL` in `public/sw.js`, and copy the JSON to the new filename (e.g., `words.v5.json`).
 3) Update expectations in `src/data/word-data.test.ts` (entry count + sample word) to match the new dataset.
 4) Run `npm run test` to catch parser violations (duplicates, missing fields, bad enums).
 5) Run `npm run verify` to ensure type, lint, and build are still happy.
-6) If ids were added/removed, assess progress-map compatibility; note breaking changes in `README.md` if needed.`r`n7) Public `main` should contain only self-authored or clearly licensed sample data.
+6) If ids were added/removed, assess progress-map compatibility; note breaking changes in `README.md` if needed.
+7) Public `main` should contain only self-authored or clearly licensed sample data.
 
 Checklist
 - [ ] JSON validates with `parseWordDataset` (no thrown errors).
 - [ ] Entry count and sample expectations updated in `src/data/word-data.test.ts`.
 - [ ] `npm run verify` passes.
-- [ ] Offline caching still good (new file under `public/data/` so service worker picks it up via build).
+- [ ] Offline caching still good (`public/sw.js` updated if the bundled dataset filename changed).
 - [ ] Changelog/README updated if dataset version bumped.
 
 ## Operational cautions

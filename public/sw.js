@@ -1,11 +1,13 @@
 const CACHE_VERSION = "suomisanat-v7";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
+const WORD_DATASET_URL = "/data/words.v4.json";
+const VERSIONED_WORD_DATASET_PATH_PATTERN = /^\/data\/words\.[a-z0-9_-]+\.json$/i;
 const APP_SHELL_URLS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/data/words.v4.json",
+  WORD_DATASET_URL,
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png"
@@ -56,11 +58,27 @@ const staleWhileRevalidate = async (request) => {
   return cached ?? networkPromise;
 };
 
+const hasStaticFileExtension = (pathname) => /\.[^/]+$/u.test(pathname);
+
+const isAppShellNavigationPath = (pathname) =>
+  pathname === "/" || pathname === "/index.html" || !hasStaticFileExtension(pathname);
+
+const isHtmlResponse = (response) => {
+  const contentType = response.headers.get("content-type");
+  return response.ok && typeof contentType === "string" && contentType.includes("text/html");
+};
+
 const networkFirstDocument = async (request) => {
+  const url = new URL(request.url);
+
   try {
     const response = await fetch(request);
-    const cache = await caches.open(APP_SHELL_CACHE);
-    cache.put("/index.html", response.clone());
+
+    if (isHtmlResponse(response) && isAppShellNavigationPath(url.pathname)) {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      cache.put("/index.html", response.clone());
+    }
+
     return response;
   } catch {
     return (await caches.match(request)) ?? (await caches.match("/index.html")) ?? Response.error();
@@ -79,7 +97,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === "/data/words.v4.json") {
+  if (VERSIONED_WORD_DATASET_PATH_PATTERN.test(url.pathname)) {
     event.respondWith(cacheFirst(request));
     return;
   }
